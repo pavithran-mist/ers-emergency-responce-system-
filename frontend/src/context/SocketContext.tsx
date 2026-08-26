@@ -63,9 +63,10 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const connectWebSocket = () => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    const wsUrl = `${protocol}//${host}/ws/alerts`;
+    const apiBase = import.meta.env.VITE_API_BASE as string;
+    const wsProtocol = apiBase.startsWith('https') ? 'wss:' : 'ws:';
+    const wsHost = apiBase.replace(/^https?:\/\//, '');
+    const wsUrl = `${wsProtocol}//${wsHost}/ws/alerts`;
 
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
