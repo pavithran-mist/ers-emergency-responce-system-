@@ -1,0 +1,8 @@
+# ASTRA AI Road Accident Detection Dataset Config
+path: ../datasets/road_accident
+train: images/train
+val: images/val
+
+# Classes
+names:
+  0: accident
