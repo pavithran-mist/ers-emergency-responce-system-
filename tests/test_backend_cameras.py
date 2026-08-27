@@ -18,7 +18,7 @@ def test_list_cameras():
     res = client.get("/api/v1/cameras", headers=headers)
     assert res.status_code == 200
     cams = res.json()
-    assert len(cams) >= 3
+    assert len(cams) >= 1
     # Check that location and landmark are present
     assert cams[0]["location"] is not None
     assert "CAM-" in cams[0]["camera_id"]

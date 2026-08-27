@@ -14,10 +14,11 @@ def test_fire_smoke_init():
 def test_fire_heuristic_detection():
     detector = FireSmokeDetector(min_fire_area=100, enable_heuristic_fire=True)
 
-    # Create dark frame with bright orange/yellow flame patch
+    # Create dark frame with bright radiant orange/yellow flame patch
     frame = np.zeros((480, 640, 3), dtype=np.uint8)
-    # Draw bright flame color (BGR: high red, medium green, low blue)
-    cv2.circle(frame, (320, 240), 40, (20, 140, 240), -1)
+    # Draw bright flame core (BGR: high red, medium green, low blue with high luminance)
+    cv2.circle(frame, (320, 240), 40, (10, 120, 245), -1)
+    cv2.circle(frame, (320, 240), 18, (30, 220, 255), -1)
 
     events = detector.detect(frame, timestamp=100.0)
     assert len(events) >= 1

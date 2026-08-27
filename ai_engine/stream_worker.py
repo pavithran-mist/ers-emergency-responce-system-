@@ -117,8 +117,15 @@ class CameraStreamWorker:
                 self.cap = cv2.VideoCapture(cam_idx, cv2.CAP_DSHOW)
                 if not self.cap or not self.cap.isOpened():
                     self.cap = cv2.VideoCapture(cam_idx)
+                if self.cap and self.cap.isOpened():
+                    self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                    self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                    self.cap.set(cv2.CAP_PROP_FPS, 30)
+                    self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             else:
                 self.cap = cv2.VideoCapture(self.stream_url)
+                if self.cap and self.cap.isOpened():
+                    self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
             if self.cap is not None and self.cap.isOpened():
                 self.is_connected = True
@@ -146,9 +153,11 @@ class CameraStreamWorker:
         self.synthetic_gen = None
 
     def _run_loop(self) -> None:
-        """Main AI vision loop."""
+        """Main high-FPS AI vision loop."""
         frame_times: List[float] = []
         last_telemetry_emit = 0.0
+        frame_counter = 0
+        last_detections: Optional[List[Detection]] = None
 
         while self.is_running:
             if not self.is_connected:
@@ -156,22 +165,18 @@ class CameraStreamWorker:
                     time.sleep(2.0)
                     continue
 
-            loop_start = time.time()
-
             # 1. Grab Frame
             frame = None
             if self.synthetic_gen is not None:
                 frame = self.synthetic_gen.get_next_frame()
-                # Keeps demo animation at the configured target rate (30 FPS by default).
                 time.sleep(1.0 / self.synthetic_target_fps)
             elif self.cap is not None:
                 ret, frame = self.cap.read()
                 if not ret or frame is None:
-                    # Retry or loop video
                     self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                     ret, frame = self.cap.read()
                     if not ret:
-                        time.sleep(0.2)
+                        time.sleep(0.1)
                         self.is_connected = False
                         continue
 
@@ -179,9 +184,14 @@ class CameraStreamWorker:
                 continue
 
             current_time = time.time()
+            frame_counter += 1
 
-            # 2. YOLO Object Detection
-            detections = self.detector.detect(frame)
+            # 2. Optimized YOLO Object Detection (every 2 frames for maximum FPS)
+            if frame_counter % 2 == 1 or last_detections is None:
+                detections = self.detector.detect(frame)
+                last_detections = detections
+            else:
+                detections = last_detections
 
             # If in synthetic mode with mock detector, generate ground-truth simulated detections
             if self.synthetic_gen is not None and not detections:

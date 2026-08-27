@@ -2,7 +2,7 @@ import os
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -64,55 +64,41 @@ def seed_initial_database_data(db: Session) -> None:
     # 3. Seed Default CMS Settings
     seed_default_settings(db)
 
-    # 4. Seed Standard Camera Fleet
-    sample_cameras = [
-        Camera(
+    # 4. Clean up any legacy synthetic / bot demo cameras so only real cameras remain
+    bot_cams = db.query(Camera).filter(Camera.url.in_(["synthetic", "demo", "sim", "mock"])).all()
+    if bot_cams:
+        bot_ids = [c.camera_id for c in bot_cams if c.camera_id != "CAM-001"]
+        if bot_ids:
+            db.query(Incident).filter(Incident.camera_id.in_(bot_ids)).delete(synchronize_session=False)
+            db.query(Camera).filter(Camera.camera_id.in_(bot_ids)).delete(synchronize_session=False)
+            logger.info("Removed %d legacy synthetic bot camera(s).", len(bot_ids))
+
+    # 5. Seed Predefined Real Webcam (CAM-001) if not exists
+    default_webcam = db.query(Camera).filter(Camera.camera_id == "CAM-001").first()
+    if not default_webcam:
+        logger.info("Seeding predefined live webcam (CAM-001)...")
+        webcam = Camera(
             camera_id="CAM-001",
-            name="NH-44 Expressway North Corridor",
-            url="synthetic",
-            camera_type="synthetic",
-            location="NH-44 Highway Mile Marker 42, Northbound",
-            latitude=28.7041,
-            longitude=77.1025,
-            landmark="Overpass Junction 4",
-            zone="Highway North Zone",
-            description="High-speed arterial highway monitor with multi-lane optical tracking.",
-            status="ONLINE",
-            is_enabled=True,
-        ),
-        Camera(
-            camera_id="CAM-002",
-            name="Central Metro Commercial Intersection",
-            url="synthetic",
-            camera_type="synthetic",
-            location="5th Avenue & Ring Road Central",
+            name="Primary Operations Live Webcam",
+            url="0",
+            camera_type="webcam",
+            location="Operations Command Center - Station 1",
             latitude=28.6139,
             longitude=77.2090,
-            landmark="City Financial Plaza",
-            zone="Downtown Sector 1",
-            description="Urban intersection monitoring pedestrian crossings and vehicle convergence.",
+            landmark="Command Station Alpha",
+            zone="Control Room Zone",
+            description="Predefined high-speed local optical and thermal sensor feed.",
             status="ONLINE",
             is_enabled=True,
-        ),
-        Camera(
-            camera_id="CAM-003",
-            name="Industrial Logistics & Fuel Depot Hub",
-            url="synthetic",
-            camera_type="synthetic",
-            location="Sector 18 Hazmat & Freight Terminal",
-            latitude=28.5355,
-            longitude=77.3910,
-            landmark="Warehouse Gate 2B",
-            zone="Industrial Corridor",
-            description="Thermal and optical monitoring for flame, heavy smoke, and hazmat emergencies.",
-            status="ONLINE",
-            is_enabled=True,
-        ),
-    ]
-    for cam in sample_cameras:
-        existing_cam = db.query(Camera).filter(Camera.camera_id == cam.camera_id).first()
-        if not existing_cam:
-            db.add(cam)
+        )
+        db.add(webcam)
+    else:
+        # Ensure it is set to real webcam source
+        if default_webcam.url == "synthetic":
+            default_webcam.url = "0"
+            default_webcam.camera_type = "webcam"
+            default_webcam.name = "Primary Operations Live Webcam"
+            default_webcam.location = "Operations Command Center - Station 1"
     db.commit()
 
 
@@ -131,7 +117,7 @@ async def lifespan(app: FastAPI):
     # Bind event loop and launch camera AI workers
     loop = asyncio.get_running_loop()
     camera_service.set_event_loop(loop)
-    #camera_service.initialize_cameras()
+    camera_service.initialize_cameras()
 
     logger.info("ASTRA AI Platform Backend started successfully.")
     yield
@@ -191,9 +177,17 @@ if frontend_dist_dir:
         app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 
     @app.get("/{full_path:path}")
-    async def serve_spa_frontend(full_path: str):
+    async def serve_spa_frontend(full_path: str, request: Request):
         if full_path.startswith("api/") or full_path.startswith("ws/"):
             raise HTTPException(status_code=404, detail="API route not found.")
+        accept_hdr = request.headers.get("accept", "")
+        if (full_path == "" or full_path == "/") and "text/html" not in accept_hdr:
+            return {
+                "platform": settings.APP_NAME,
+                "version": "2.0.0",
+                "status": "OPERATIONAL",
+                "docs_url": "/docs",
+            }
         target_file = os.path.join(frontend_dist_dir, full_path)
         if full_path and os.path.exists(target_file) and os.path.isfile(target_file):
             return FileResponse(target_file)

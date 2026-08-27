@@ -187,23 +187,25 @@ class FireSmokeDetector:
                 if self.min_fire_area <= area <= (total_frame_area * 0.40):
                     bx, by, bw, bh = cv2.boundingRect(cnt)
                     
-                    # Distinguish real emissive flame from flat matte clothing:
-                    # Flames have an intensely bright luminous core (peak brightness > 215)
+                    # Distinguish real emissive flame from flat matte clothing/signs:
+                    # 1. Emissive radiant core (peak brightness > 215)
+                    # 2. Flame gradient variance: standard deviation of color in ROI > 16
                     roi_r = r[by : by + bh, bx : bx + bw]
                     roi_v = hsv[by : by + bh, bx : bx + bw, 2]
 
                     max_val = int(np.max(roi_v)) if roi_v.size > 0 else 0
                     max_r = int(np.max(roi_r)) if roi_r.size > 0 else 0
+                    std_r = float(np.std(roi_r)) if roi_r.size > 0 else 0.0
 
-                    # Must have an emissive glowing core (peak value > 210) to reject dull clothing fabrics
-                    if max_val >= 205 and max_r >= 210:
-                        conf = min(0.94, 0.62 + (max_val / 255.0) * 0.30)
+                    # Must have an emissive glowing core (peak value >= 210) AND high dynamic color variance
+                    if max_val >= 210 and max_r >= 215 and std_r >= 14.0:
+                        conf = min(0.95, 0.65 + (max_val / 255.0) * 0.28)
                         events.append(
                             FireSmokeEvent(
                                 event_type="possible_fire",
                                 confidence=conf,
                                 bounding_box=(bx, by, bx + bw, by + bh),
-                                reason="radiant_flame_intensity",
+                                reason="radiant_flame_gradient_intensity",
                                 backend="heuristic",
                                 timestamp=timestamp,
                                 risk="CRITICAL" if area > 1200 else "HIGH",
