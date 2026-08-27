@@ -35,25 +35,32 @@ class FireSmokeEvent:
         }
 
 
+_PROJ_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_DEFAULT_FIRE_PATH = os.path.join(_PROJ_ROOT, "models", "fire_detection.pt")
+
+
 class FireSmokeDetector:
-    """Detects fire and smoke with a trained model and a temporal optical fallback."""
+    """Detects fire and smoke using trained YOLO Deep Learning models."""
 
     def __init__(
         self,
-        custom_model_path: str = "models/fire_detection.pt",
+        custom_model_path: Optional[str] = None,
         min_fire_area: int = 200,
         min_smoke_area: int = 1500,
-        enable_heuristic_fire: bool = True,
+        enable_heuristic_fire: bool = False,
         enable_heuristic_smoke: bool = False,
     ):
-        self.custom_model_path = custom_model_path
+        self.custom_model_path = custom_model_path or _DEFAULT_FIRE_PATH
+        if not os.path.isabs(self.custom_model_path) and not os.path.exists(self.custom_model_path):
+            self.custom_model_path = os.path.join(_PROJ_ROOT, self.custom_model_path)
+
         self.min_fire_area = min_fire_area
         self.min_smoke_area = min_smoke_area
         self.enable_heuristic_fire = enable_heuristic_fire
         self.enable_heuristic_smoke = enable_heuristic_smoke
         
         self.model = None
-        self.backend = "heuristic"
+        self.backend = "yolo_fire_model"
         self._load_model_if_available()
 
         # Temporal history for dynamic flicker calculation
@@ -66,10 +73,10 @@ class FireSmokeDetector:
                 from ultralytics import YOLO  # type: ignore
                 logger.info(f"Loading custom fire/smoke YOLO model from {self.custom_model_path}...")
                 self.model = YOLO(self.custom_model_path)
-                self.backend = "custom_model"
-                logger.info("Fire/smoke YOLO model loaded successfully.")
+                self.backend = "yolo_fire_model"
+                logger.info("Fire/smoke YOLO neural network model loaded successfully.")
             except Exception as e:
-                logger.warning(f"Failed to load fire model ({e}). Using optical flame fallback.")
+                logger.warning(f"Failed to load fire model ({e}).")
                 self.model = None
                 self.backend = "heuristic"
         else:

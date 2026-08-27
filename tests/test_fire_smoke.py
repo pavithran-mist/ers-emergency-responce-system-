@@ -8,7 +8,7 @@ from ai_engine.fire_smoke_detector import FireSmokeDetector
 
 def test_fire_smoke_init():
     detector = FireSmokeDetector(custom_model_path="models/non_existent.pt")
-    assert detector.backend in ["yolo_model", "heuristic", "custom_model"]
+    assert detector.backend in ["yolo_model", "heuristic", "custom_model", "yolo_fire_model"]
 
 
 def test_fire_heuristic_detection():

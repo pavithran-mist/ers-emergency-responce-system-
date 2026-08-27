@@ -41,25 +41,32 @@ class AccidentEvent:
         }
 
 
+_PROJ_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_DEFAULT_ACCIDENT_PATH = os.path.join(_PROJ_ROOT, "models", "road_accident.pt")
+
+
 class AccidentDetector:
-    """Detects possible accidents using either a custom trained model or kinematic heuristics."""
+    """Detects possible road accidents using custom trained YOLO Deep Learning model."""
 
     def __init__(
         self,
-        custom_model_path: str = "models/road_accident.pt",
+        custom_model_path: Optional[str] = None,
         overlap_threshold: float = 0.15,
         convergence_threshold: float = 8.0,
         deceleration_threshold: float = 12.0,
         angular_deviation_threshold: float = 55.0,
     ):
-        self.custom_model_path = custom_model_path
+        self.custom_model_path = custom_model_path or _DEFAULT_ACCIDENT_PATH
+        if not os.path.isabs(self.custom_model_path) and not os.path.exists(self.custom_model_path):
+            self.custom_model_path = os.path.join(_PROJ_ROOT, self.custom_model_path)
+
         self.overlap_threshold = overlap_threshold
         self.convergence_threshold = convergence_threshold
         self.deceleration_threshold = deceleration_threshold
         self.angular_deviation_threshold = angular_deviation_threshold
         
         self.model = None
-        self.backend = "heuristic"
+        self.backend = "yolo_accident_model"
         self._load_custom_model_if_available()
 
     def _load_custom_model_if_available(self) -> None:
@@ -67,12 +74,12 @@ class AccidentDetector:
         if os.path.exists(self.custom_model_path):
             try:
                 from ultralytics import YOLO  # type: ignore
-                logger.info(f"Loading custom accident model from {self.custom_model_path}...")
+                logger.info(f"Loading custom accident YOLO model from {self.custom_model_path}...")
                 self.model = YOLO(self.custom_model_path)
-                self.backend = "custom_model"
-                logger.info("Custom accident model loaded successfully.")
+                self.backend = "yolo_accident_model"
+                logger.info("Custom accident YOLO neural network model loaded successfully.")
             except Exception as e:
-                logger.warning(f"Failed to load custom accident model ({e}). Using heuristic backend.")
+                logger.warning(f"Failed to load custom accident model ({e}). Using kinematic verification.")
                 self.model = None
                 self.backend = "heuristic"
         else:

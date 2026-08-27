@@ -30,8 +30,8 @@ class CameraStreamWorker:
         camera_name: str,
         stream_url: str,
         camera_type: str = "synthetic",
-        custom_accident_model: str = "models/road_accident.pt",
-        custom_fire_model: str = "models/fire_detection.pt",
+        custom_accident_model: Optional[str] = None,
+        custom_fire_model: Optional[str] = None,
         on_incident_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
         on_telemetry_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
     ):
@@ -46,11 +46,11 @@ class CameraStreamWorker:
         self.synthetic_target_fps = max(1, int(os.getenv("ASTRA_SYNTHETIC_FPS", "30")))
         self.use_cuda = os.getenv("ASTRA_USE_CUDA", "false").strip().lower() in {"1", "true", "yes"}
 
-        # Initialize AI Pipeline Modules
-        self.detector = ObjectDetector(confidence_threshold=0.35, use_cuda=self.use_cuda)
+        # Initialize AI Pipeline Modules with Real Deep Learning YOLO models
+        self.detector = ObjectDetector(confidence_threshold=0.25, use_cuda=self.use_cuda)
         self.tracker = VehicleTracker(max_age=15, iou_threshold=0.20)
         self.accident_detector = AccidentDetector(custom_model_path=custom_accident_model)
-        self.fire_smoke_detector = FireSmokeDetector(custom_model_path=custom_fire_model)
+        self.fire_smoke_detector = FireSmokeDetector(custom_model_path=custom_fire_model, enable_heuristic_fire=False, enable_heuristic_smoke=False)
         self.temporal_verifier = TemporalVerifier(window_size=6, min_hits=3, cooldown_seconds=6.0)
 
         # Worker state
@@ -184,26 +184,21 @@ class CameraStreamWorker:
                 continue
 
             current_time = time.time()
-            frame_counter += 1
 
-            # 2. Optimized YOLO Object Detection (every 2 frames for maximum FPS)
-            if frame_counter % 2 == 1 or last_detections is None:
-                detections = self.detector.detect(frame)
-                last_detections = detections
-            else:
-                detections = last_detections
+            # 2. YOLO Object & Vehicle Detection
+            detections = self.detector.detect(frame)
 
             # If in synthetic mode with mock detector, generate ground-truth simulated detections
             if self.synthetic_gen is not None and not detections:
                 detections = self._extract_synthetic_detections(frame)
 
-            # 3. Vehicle Tracking
+            # 3. Vehicle & Object Tracking
             tracked = self.tracker.update(detections, timestamp=current_time)
 
-            # 4. Accident Detection (Custom Model + Heuristic fallback)
+            # 4. Accident Detection (Custom Deep Learning YOLO Model)
             raw_accidents = self.accident_detector.detect(frame, tracked, timestamp=current_time)
 
-            # 5. Fire & Smoke Detection (Model + Heuristic fallback)
+            # 5. Fire & Smoke Detection (Custom Deep Learning YOLO Model)
             raw_fire_smoke = self.fire_smoke_detector.detect(frame, timestamp=current_time)
 
             # Collect raw candidate hazards

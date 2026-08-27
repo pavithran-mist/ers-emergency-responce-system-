@@ -8,21 +8,28 @@ import numpy as np
 
 logger = logging.getLogger("astra.detector")
 
-# COCO Vehicle class IDs mapping for YOLO
-# 1: bicycle, 2: car, 3: motorcycle, 5: bus, 7: truck
+import os
+
+_PROJ_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_DEFAULT_YOLO_PATH = os.path.join(_PROJ_ROOT, "yolo11n.pt")
+
+# COCO Vehicle and traffic class mapping for YOLO
 COCO_VEHICLE_CLASSES = {
     0: "person",
     1: "bicycle",
     2: "car",
     3: "motorcycle",
+    4: "airplane",
     5: "bus",
+    6: "train",
     7: "truck",
+    8: "boat",
     9: "traffic light",
     11: "stop sign",
     67: "cell phone",
 }
 
-TARGET_VEHICLE_NAMES = {"car", "truck", "bus", "motorcycle", "bicycle", "person", "traffic light", "stop sign", "cell phone"}
+TARGET_VEHICLE_NAMES = {"car", "truck", "bus", "motorcycle", "bicycle", "person", "train", "boat", "traffic light", "stop sign", "cell phone"}
 
 
 @dataclass
@@ -63,12 +70,15 @@ class ObjectDetector:
 
     def __init__(
         self,
-        model_path: str = "yolo11n.pt",
-        confidence_threshold: float = 0.35,
+        model_path: Optional[str] = None,
+        confidence_threshold: float = 0.25,
         target_classes: Optional[set] = None,
         use_cuda: bool = False,
     ):
-        self.model_path = model_path
+        self.model_path = model_path or _DEFAULT_YOLO_PATH
+        if not os.path.isabs(self.model_path) and not os.path.exists(self.model_path):
+            self.model_path = os.path.join(_PROJ_ROOT, self.model_path)
+
         self.confidence_threshold = confidence_threshold
         self.target_classes = target_classes or TARGET_VEHICLE_NAMES
         self.use_cuda = use_cuda
@@ -85,7 +95,7 @@ class ObjectDetector:
             device = "cuda" if self.use_cuda and torch.cuda.is_available() else "cpu"
             logger.info(f"Loading YOLO detector model from {self.model_path} on device {device}...")
             self.model = YOLO(self.model_path)
-            self.backend = f"yolo_{self.model_path}"
+            self.backend = f"yolo_{os.path.basename(self.model_path)}"
             logger.info(f"Detector successfully loaded ({self.backend})")
         except Exception as e:
             logger.warning(f"Could not load YOLO model ({e}). Using heuristic/mock detector backend.")
