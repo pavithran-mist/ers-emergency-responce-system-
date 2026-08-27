@@ -133,14 +133,7 @@ class ObjectDetector:
                         cls_id = int(box.cls[0].item())
                         cls_name = self.model.names.get(cls_id, str(cls_id)).lower()
                         conf = float(box.conf[0].item())
-
-                        if cls_name not in self.target_classes and cls_id not in COCO_VEHICLE_CLASSES:
-                            continue
-
-                        # Resolve standardized class name
                         std_name = COCO_VEHICLE_CLASSES.get(cls_id, cls_name)
-                        if std_name not in self.target_classes:
-                            continue
 
                         xyxy = box.xyxy[0].cpu().numpy().astype(int)
                         x1, y1, x2, y2 = int(xyxy[0]), int(xyxy[1]), int(xyxy[2]), int(xyxy[3])

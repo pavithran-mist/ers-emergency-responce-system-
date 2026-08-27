@@ -106,6 +106,9 @@ export const AdminCamerasPage: React.FC = () => {
     } else if (newType === 'video_file') {
       defaultUrl = 'datasets/sample_traffic.mp4';
       defaultName = 'Local Video File Feed';
+    } else if (newType === 'phone_stream') {
+      defaultUrl = 'http://192.168.1.100:8080/video';
+      defaultName = 'Mobile Phone Camera Feed';
     } else if (newType === 'ip_stream') {
       defaultUrl = 'http://192.168.1.100:8080/video';
       defaultName = 'IP Network Camera';
@@ -383,6 +386,17 @@ export const AdminCamerasPage: React.FC = () => {
                     </button>
                     <button
                       type="button"
+                      onClick={() => handleTypeChange('phone_stream')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-all ${
+                        formData.camera_type === 'phone_stream'
+                          ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+                          : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                      }`}
+                    >
+                      <span>📱 Phone Camera (WiFi)</span>
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => handleTypeChange('rtsp')}
                       className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-all ${
                         formData.camera_type === 'rtsp'
@@ -407,6 +421,21 @@ export const AdminCamerasPage: React.FC = () => {
                 </div>
               )}
 
+              {/* Phone Camera Setup Guide */}
+              {formData.camera_type === 'phone_stream' && (
+                <div className="bg-cyan-950/40 border border-cyan-500/30 rounded-xl p-3.5 text-xs text-slate-300 space-y-1.5">
+                  <div className="font-semibold text-cyan-300 flex items-center space-x-1.5">
+                    <span>📱 How to stream live from your Phone Camera:</span>
+                  </div>
+                  <ol className="list-decimal list-inside space-y-1 text-slate-300 text-[11px] font-mono pl-1">
+                    <li>Install free <b>IP Webcam</b> (Android) or <b>DroidCam</b> (Android/iOS) on your phone.</li>
+                    <li>Connect your phone to the <b>same WiFi network</b> as this PC.</li>
+                    <li>Open the app on your phone and tap <b>"Start Server"</b>.</li>
+                    <li>Enter the video URL shown on your phone below (e.g. <span className="text-cyan-300 font-bold">http://192.168.1.X:8080/video</span>).</li>
+                  </ol>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Camera ID *</label>
@@ -428,7 +457,7 @@ export const AdminCamerasPage: React.FC = () => {
                     required
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="Primary Operations Webcam"
+                    placeholder="Mobile Phone Camera Feed"
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-cyan-500"
                   />
                 </div>
@@ -440,11 +469,11 @@ export const AdminCamerasPage: React.FC = () => {
                     onChange={(e) => handleTypeChange(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
                   >
+                    <option value="phone_stream">Phone Camera (IP Webcam / DroidCam)</option>
                     <option value="webcam">Local Webcam (Index 0, 1)</option>
                     <option value="rtsp">RTSP Stream (rtsp://...)</option>
                     <option value="ip_stream">IP Camera Stream (http://...)</option>
                     <option value="video_file">Local Video File (MP4/AVI)</option>
-                    <option value="phone_stream">Phone Camera Stream</option>
                   </select>
                 </div>
 
