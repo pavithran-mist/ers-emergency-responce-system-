@@ -183,7 +183,7 @@ if frontend_dist_dir:
     if os.path.exists(assets_dir):
         app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 
-    @app.get("/{full_path:path}")
+    @app.api_route("/{full_path:path}", methods=["GET", "HEAD"])
     async def serve_spa_frontend(full_path: str, request: Request):
         if full_path.startswith("api/") or full_path.startswith("ws/"):
             raise HTTPException(status_code=404, detail="API route not found.")
@@ -208,7 +208,7 @@ if frontend_dist_dir:
             "docs_url": "/docs",
         }
 else:
-    @app.get("/")
+    @app.api_route("/", methods=["GET", "HEAD"])
     def root():
         return {
             "platform": settings.APP_NAME,
