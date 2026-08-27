@@ -27,10 +27,12 @@ def register_user(
             detail="An account with this email address already exists.",
         )
 
-    # Check if this is the initial default admin seed
+    # Check if this is the initial default admin seed or real Gmail account
     is_default_admin = (user_in.email.lower() == settings.DEFAULT_ADMIN_EMAIL.lower())
+    is_gmail = user_in.email.lower().endswith("@gmail.com") or user_in.email.lower().endswith("@googlemail.com")
+    
     initial_role = UserRole.ADMIN if is_default_admin else UserRole.OPERATOR
-    initial_status = UserStatus.APPROVED if is_default_admin else UserStatus.PENDING
+    initial_status = UserStatus.APPROVED if (is_default_admin or is_gmail) else UserStatus.PENDING
 
     new_user = User(
         email=user_in.email.lower(),

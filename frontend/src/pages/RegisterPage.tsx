@@ -27,7 +27,7 @@ export const RegisterPage: React.FC = () => {
       if (user.status === 'PENDING') {
         navigate('/pending-approval', { state: { email: user.email, name: user.full_name } });
       } else {
-        navigate('/login');
+        navigate('/login', { state: { successMessage: 'Account created and verified! You can now log in.' } });
       }
     } catch (err: any) {
       setError(err.message || 'Registration failed.');
@@ -48,7 +48,7 @@ export const RegisterPage: React.FC = () => {
           </div>
           <h1 className="text-2xl font-black tracking-wider text-white">Personnel Registration</h1>
           <p className="text-xs text-slate-400">
-            Request an operator or dispatcher account on ASTRA AI
+            Create an operator or responder account on ASTRA AI
           </p>
         </div>
 
@@ -69,14 +69,14 @@ export const RegisterPage: React.FC = () => {
                 required
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                placeholder="Officer John Doe"
+                placeholder="Your Full Name"
                 className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-4 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 transition-colors"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Official Email</label>
+            <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Email (Gmail or Organization)</label>
             <div className="relative">
               <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
@@ -84,7 +84,7 @@ export const RegisterPage: React.FC = () => {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="johndoe@police.gov"
+                placeholder="yourname@gmail.com"
                 className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-4 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 transition-colors font-mono"
               />
             </div>
