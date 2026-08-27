@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { api } from '../services/api';
-import { Smartphone, X, RefreshCw, AlertTriangle, ShieldAlert, CheckCircle2, Navigation } from 'lucide-react';
+import { Smartphone, X, RefreshCw, AlertTriangle, ShieldAlert, Navigation, Activity } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface MobileCameraModalProps {
@@ -19,30 +19,13 @@ export const MobileCameraModal: React.FC<MobileCameraModalProps> = ({ isOpen, on
   const [detections, setDetections] = useState<any[]>([]);
   const [hazards, setHazards] = useState<any[]>([]);
   const [fps, setFps] = useState<number>(0);
+  const [latency, setLatency] = useState<number>(0);
   const [vehicleCount, setVehicleCount] = useState<number>(0);
   const [activeIncident, setActiveIncident] = useState<any | null>(null);
-  const [locationCoords, setLocationCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [apiStatus, setApiStatus] = useState<'CONNECTING' | 'ACTIVE' | 'ERROR'>('CONNECTING');
 
   const streamRef = useRef<MediaStream | null>(null);
   const isProcessingRef = useRef(false);
-
-  // Request GPS location for emergency geo-tagging
-  useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setLocationCoords({
-            latitude: pos.coords.latitude,
-            longitude: pos.coords.longitude,
-          });
-        },
-        () => {
-          // Fallback to default
-        },
-        { enableHighAccuracy: true, timeout: 10000 }
-      );
-    }
-  }, [isOpen]);
 
   const startCamera = async (mode: 'environment' | 'user') => {
     setError(null);
@@ -51,24 +34,35 @@ export const MobileCameraModal: React.FC<MobileCameraModalProps> = ({ isOpen, on
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: mode },
-          width: { ideal: 640 },
-          height: { ideal: 480 },
-        },
-        audio: false,
-      });
+      let stream: MediaStream | null = null;
+
+      // Try primary ideal constraints
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: mode },
+            width: { ideal: 640, max: 1280 },
+            height: { ideal: 480, max: 720 },
+          },
+          audio: false,
+        });
+      } catch (errPrimary) {
+        // Fallback for PC webcams without environment facingMode
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false,
+        });
+      }
 
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        videoRef.current.play();
+        await videoRef.current.play();
       }
       setIsStreaming(true);
     } catch (err: any) {
       console.error('Camera access error:', err);
-      setError(err.message || 'Unable to access device camera. Please grant camera permission.');
+      setError(err.message || 'Unable to access device camera. Please allow camera permissions in your browser.');
       setIsStreaming(false);
     }
   };
@@ -83,6 +77,7 @@ export const MobileCameraModal: React.FC<MobileCameraModalProps> = ({ isOpen, on
       }
       setIsStreaming(false);
       setActiveIncident(null);
+      setFps(0);
     }
     return () => {
       if (streamRef.current) {
@@ -97,7 +92,7 @@ export const MobileCameraModal: React.FC<MobileCameraModalProps> = ({ isOpen, on
     startCamera(nextMode);
   };
 
-  // Inference loop
+  // Inference loop with optimized 416x312 downscaled frame transfer
   useEffect(() => {
     let lastTime = performance.now();
     let frameCount = 0;
@@ -107,21 +102,26 @@ export const MobileCameraModal: React.FC<MobileCameraModalProps> = ({ isOpen, on
 
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      if (video.readyState !== 4) return;
+      if (video.readyState < 2) return;
 
-      canvas.width = video.videoWidth || 640;
-      canvas.height = video.videoHeight || 480;
+      // Downscale to 416x312 for ultra-fast ~15KB transmission over mobile networks
+      canvas.width = 416;
+      canvas.height = 312;
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      // Draw current video frame to hidden canvas to export base64
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const base64 = canvas.toDataURL('image/jpeg', 0.65);
+      const base64 = canvas.toDataURL('image/jpeg', 0.50);
 
       isProcessingRef.current = true;
+      const startTime = performance.now();
       try {
         const res = await api.detectFrame(base64);
+        const reqLatency = Math.round(performance.now() - startTime);
+        setLatency(reqLatency);
+
         if (res && res.status === 'success') {
+          setApiStatus('ACTIVE');
           setDetections(res.detections || []);
           setHazards(res.hazards || []);
           setVehicleCount(res.vehicle_count || 0);
@@ -131,7 +131,6 @@ export const MobileCameraModal: React.FC<MobileCameraModalProps> = ({ isOpen, on
             const inc = res.created_incidents[0];
             setActiveIncident(inc);
 
-            // Vibrate phone for emergency alert
             if (navigator.vibrate) {
               navigator.vibrate([300, 150, 300, 150, 500]);
             }
@@ -145,13 +144,15 @@ export const MobileCameraModal: React.FC<MobileCameraModalProps> = ({ isOpen, on
             frameCount = 0;
             lastTime = now;
           }
+        } else {
+          setApiStatus('ERROR');
         }
       } catch (e) {
-        // Ignore frame network drop
+        setApiStatus('ERROR');
       } finally {
         isProcessingRef.current = false;
       }
-    }, 150);
+    }, 120);
 
     return () => clearInterval(interval);
   }, [isStreaming]);
@@ -218,7 +219,13 @@ export const MobileCameraModal: React.FC<MobileCameraModalProps> = ({ isOpen, on
             <div className="p-6 text-center text-red-400 space-y-2">
               <AlertTriangle className="w-10 h-10 mx-auto" />
               <p className="text-sm font-semibold">{error}</p>
-              <p className="text-xs text-slate-400">Please grant camera permission in your browser.</p>
+              <p className="text-xs text-slate-400">Please tap "Allow" when your browser asks for camera permission.</p>
+              <button
+                onClick={() => startCamera(facingMode)}
+                className="mt-3 px-4 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-bold"
+              >
+                Retry Camera
+              </button>
             </div>
           ) : (
             <>
@@ -235,7 +242,7 @@ export const MobileCameraModal: React.FC<MobileCameraModalProps> = ({ isOpen, on
               <div className="absolute top-2 left-2 flex flex-wrap gap-1.5 font-mono text-[11px]">
                 <span className="px-2 py-0.5 bg-black/70 backdrop-blur-sm rounded border border-emerald-500/40 text-emerald-400 font-bold flex items-center space-x-1">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                  <span>LIVE ({fps} FPS)</span>
+                  <span>LIVE ({fps} FPS • {latency}ms)</span>
                 </span>
                 <span className="px-2 py-0.5 bg-black/70 backdrop-blur-sm rounded border border-cyan-500/40 text-cyan-300">
                   OBJECTS: {vehicleCount}
@@ -246,7 +253,7 @@ export const MobileCameraModal: React.FC<MobileCameraModalProps> = ({ isOpen, on
                   </span>
                 ) : (
                   <span className="px-2 py-0.5 bg-black/70 backdrop-blur-sm rounded border border-slate-700 text-slate-300">
-                    STATUS: MONITORING
+                    STATUS: {apiStatus === 'ACTIVE' ? 'SCANNING ACTIVE' : 'CONNECTING AI...'}
                   </span>
                 )}
               </div>
@@ -280,10 +287,10 @@ export const MobileCameraModal: React.FC<MobileCameraModalProps> = ({ isOpen, on
                     <div
                       key={`h-${i}`}
                       style={{
-                        left: `${(bbox[0] / 640) * 100}%`,
-                        top: `${(bbox[1] / 480) * 100}%`,
-                        width: `${((bbox[2] - bbox[0]) / 640) * 100}%`,
-                        height: `${((bbox[3] - bbox[1]) / 480) * 100}%`,
+                        left: `${(bbox[0] / 416) * 100}%`,
+                        top: `${(bbox[1] / 312) * 100}%`,
+                        width: `${((bbox[2] - bbox[0]) / 416) * 100}%`,
+                        height: `${((bbox[3] - bbox[1]) / 312) * 100}%`,
                       }}
                       className="absolute border-2 border-red-500 bg-red-500/20 rounded animate-pulse"
                     >
@@ -301,8 +308,8 @@ export const MobileCameraModal: React.FC<MobileCameraModalProps> = ({ isOpen, on
         {/* Footer controls */}
         <div className="p-3 bg-slate-950 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs font-mono text-slate-400">
           <div className="flex items-center space-x-1.5 text-[11px] text-slate-300">
-            <Navigation className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Fires & accidents detected will auto-record emergency dispatch incidents.</span>
+            <Activity className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Point camera at cars, people, or hazards to detect in real-time.</span>
           </div>
           <button
             onClick={onClose}
