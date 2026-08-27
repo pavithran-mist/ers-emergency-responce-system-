@@ -1,10 +1,11 @@
 import { User, Camera, Incident, SystemSetting, AuditLog, AIStatus } from '../types';
 
-// Dynamically resolve API base from environment or current host
 export const API_BASE =
   (import.meta.env.VITE_API_BASE as string) ||
   (import.meta.env.VITE_API_URL as string) ||
-  '/api/v1';
+  (typeof window !== 'undefined' && window.location.port === '3000'
+    ? `http://${window.location.hostname}:8000/api/v1`
+    : '/api/v1');
 
 function getAuthHeaders(): HeadersInit {
   const token = localStorage.getItem('astra_token');

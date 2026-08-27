@@ -73,8 +73,9 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         wsUrl = apiBase.replace('https://', 'wss://').replace(/\/api\/v1\/?$/, '') + '/ws/alerts';
       } else {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const host = window.location.host;
-        wsUrl = `${protocol}//${host}/ws/alerts`;
+        const hostname = window.location.hostname;
+        const port = window.location.port === '3000' ? '8000' : window.location.port;
+        wsUrl = `${protocol}//${hostname}${port ? ':' + port : ''}/ws/alerts`;
       }
     }
 

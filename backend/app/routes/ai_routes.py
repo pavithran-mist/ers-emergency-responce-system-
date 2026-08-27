@@ -147,7 +147,6 @@ class FrameDetectRequest(BaseModel):
 @router.post("/detect-frame")
 def detect_mobile_frame(
     req: FrameDetectRequest,
-    user: User = Depends(require_approved_user),
 ):
     """Run live YOLO inference on frames streamed directly from phone browser camera."""
     try:
