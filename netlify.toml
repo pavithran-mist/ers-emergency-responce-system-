@@ -1,0 +1,20 @@
+[build]
+  base = "frontend"
+  publish = "dist"
+  command = "npm run build"
+
+[build.environment]
+  NODE_VERSION = "20"
+  VITE_API_BASE = "https://ers-emergency-responce-system-backend.onrender.com/api/v1"
+  VITE_WS_URL = "wss://ers-emergency-responce-system-backend.onrender.com/ws/alerts"
+
+[[redirects]]
+  from = "/api/*"
+  to = "https://ers-emergency-responce-system-backend.onrender.com/api/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
