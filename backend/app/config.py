@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "ASTRA AI"
     APP_ENV: str = os.getenv("APP_ENV", "development")
     API_V1_STR: str = "/api/v1"
-    CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "http://localhost:3000")
+    CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173,https://*.onrender.com,*")
     
     # Security & Authentication
     JWT_SECRET: str = os.getenv("JWT_SECRET", "astra-ai-super-secure-secret-key-2026-road-safety")
@@ -25,10 +25,14 @@ class Settings(BaseSettings):
     ACCIDENT_MODEL_PATH: str = os.path.join(MODELS_DIR, "road_accident.pt")
     FIRE_MODEL_PATH: str = os.path.join(MODELS_DIR, "fire_detection.pt")
     
-    # Initial Super Admin Seed
+    # Initial Accounts Seed
     DEFAULT_ADMIN_EMAIL: str = os.getenv("DEFAULT_ADMIN_EMAIL", "admin@astra.ai")
     DEFAULT_ADMIN_PASSWORD: str = os.getenv("DEFAULT_ADMIN_PASSWORD", "Admin@12345")
     DEFAULT_ADMIN_NAME: str = "System Administrator"
+
+    DEFAULT_OPERATOR_EMAIL: str = os.getenv("DEFAULT_OPERATOR_EMAIL", "operator@astra.ai")
+    DEFAULT_OPERATOR_PASSWORD: str = os.getenv("DEFAULT_OPERATOR_PASSWORD", "Operator@123")
+    DEFAULT_OPERATOR_NAME: str = "Lead Emergency Dispatcher"
 
 
 settings = Settings()

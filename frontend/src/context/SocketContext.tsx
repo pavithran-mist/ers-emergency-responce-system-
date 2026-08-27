@@ -63,12 +63,24 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const connectWebSocket = () => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    const wsUrl = `${protocol}//${host}/ws/alerts`;
+    let wsUrl = import.meta.env.VITE_WS_URL as string | undefined;
 
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
+    if (!wsUrl) {
+      const apiBase = (import.meta.env.VITE_API_BASE as string) || (import.meta.env.VITE_API_URL as string) || '';
+      if (apiBase.startsWith('http://')) {
+        wsUrl = apiBase.replace('http://', 'ws://').replace(/\/api\/v1\/?$/, '') + '/ws/alerts';
+      } else if (apiBase.startsWith('https://')) {
+        wsUrl = apiBase.replace('https://', 'wss://').replace(/\/api\/v1\/?$/, '') + '/ws/alerts';
+      } else {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.host;
+        wsUrl = `${protocol}//${host}/ws/alerts`;
+      }
+    }
+
+    try {
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
 
     ws.onopen = () => {
       console.log('ASTRA WebSocket connected');
@@ -105,6 +117,10 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       console.debug('WebSocket error:', err);
       ws.close();
     };
+    } catch (err) {
+      console.warn('Could not establish WebSocket connection:', err);
+      reconnectTimeoutRef.current = setTimeout(connectWebSocket, 5000);
+    }
   };
 
   useEffect(() => {

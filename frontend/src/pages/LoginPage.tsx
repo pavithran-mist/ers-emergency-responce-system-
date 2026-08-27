@@ -2,11 +2,12 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
-import { Shield, Lock, Mail, ArrowRight, AlertCircle, CheckCircle } from 'lucide-react';
+import { Shield, Lock, Mail, ArrowRight, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -15,14 +16,20 @@ export const LoginPage: React.FC = () => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!email.trim() || !password.trim()) {
+      setError('Please provide both email address and password.');
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
-      const res = await api.login(email, password);
+      const res = await api.login(email.trim(), password);
       login(res.access_token, res.user);
       navigate('/');
     } catch (err: any) {
-      setError(err.message || 'Login failed. Please check credentials.');
+      console.error('Login submission error:', err);
+      setError(err.message || 'Unable to sign in. Please verify credentials or server status.');
     } finally {
       setLoading(false);
     }
@@ -31,6 +38,7 @@ export const LoginPage: React.FC = () => {
   const handleQuickLogin = (roleEmail: string, rolePass: string) => {
     setEmail(roleEmail);
     setPassword(rolePass);
+    setError(null);
   };
 
   return (
@@ -40,7 +48,7 @@ export const LoginPage: React.FC = () => {
       <div className="absolute bottom-10 left-10 w-[400px] h-[300px] bg-red-600/10 blur-[100px] rounded-full pointer-events-none" />
 
       {/* Main Login Card */}
-      <div className="w-full max-w-md bg-slate-900/80 border border-slate-800 backdrop-blur-xl p-8 rounded-2xl shadow-2xl shadow-black/80 z-10 space-y-6">
+      <div className="w-full max-w-md bg-slate-900/90 border border-slate-800 backdrop-blur-xl p-8 rounded-2xl shadow-2xl shadow-black/80 z-10 space-y-6">
         {/* Brand Logo */}
         <div className="text-center space-y-2">
           <div className="inline-flex p-3 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 shadow-lg shadow-cyan-950/50 mb-2">
@@ -55,9 +63,9 @@ export const LoginPage: React.FC = () => {
         </div>
 
         {error && (
-          <div className="bg-red-950/80 border border-red-500/50 p-3 rounded-lg text-xs text-red-300 flex items-start space-x-2">
+          <div className="bg-red-950/80 border border-red-500/50 p-3 rounded-lg text-xs text-red-300 flex items-start space-x-2 animate-fadeIn">
             <AlertCircle className="w-4 h-4 flex-shrink-0 text-red-400 mt-0.5" />
-            <span>{error}</span>
+            <span className="flex-1">{error}</span>
           </div>
         )}
 
@@ -69,6 +77,7 @@ export const LoginPage: React.FC = () => {
               <input
                 type="email"
                 required
+                autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="operator@astra.ai"
@@ -82,20 +91,29 @@ export const LoginPage: React.FC = () => {
             <div className="relative">
               <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 required
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-4 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 transition-colors font-mono"
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-10 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 transition-colors font-mono"
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 focus:outline-none"
+                tabIndex={-1}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
             </div>
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 px-4 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:opacity-50 text-white rounded-lg text-sm font-semibold flex items-center justify-center space-x-2 transition-all shadow-lg shadow-cyan-950/50"
+            className="w-full py-3 px-4 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:opacity-50 text-white rounded-lg text-sm font-semibold flex items-center justify-center space-x-2 transition-all shadow-lg shadow-cyan-950/50 cursor-pointer disabled:cursor-not-allowed"
           >
             <span>{loading ? 'Authenticating...' : 'Sign In to Command Center'}</span>
             <ArrowRight className="w-4 h-4" />
@@ -111,14 +129,14 @@ export const LoginPage: React.FC = () => {
             <button
               type="button"
               onClick={() => handleQuickLogin('admin@astra.ai', 'Admin@12345')}
-              className="py-1.5 px-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-[11px] font-mono text-cyan-400 rounded transition-colors text-center"
+              className="py-1.5 px-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-[11px] font-mono text-cyan-400 rounded transition-colors text-center cursor-pointer"
             >
               Super Admin
             </button>
             <button
               type="button"
               onClick={() => handleQuickLogin('operator@astra.ai', 'Operator@123')}
-              className="py-1.5 px-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-[11px] font-mono text-slate-300 rounded transition-colors text-center"
+              className="py-1.5 px-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-[11px] font-mono text-slate-300 rounded transition-colors text-center cursor-pointer"
             >
               Operator (Sample)
             </button>

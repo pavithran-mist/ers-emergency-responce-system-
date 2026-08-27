@@ -31,7 +31,7 @@ logger = logging.getLogger("astra.main")
 
 
 def seed_initial_database_data(db: Session) -> None:
-    """Seed the initial administrator and system settings (no demo cameras)."""
+    """Seed the initial administrator, operator, system settings, and camera fleet."""
     # 1. Seed Super Admin
     admin_user = db.query(User).filter(User.email == settings.DEFAULT_ADMIN_EMAIL.lower()).first()
     if not admin_user:
@@ -46,22 +46,72 @@ def seed_initial_database_data(db: Session) -> None:
         db.add(admin_user)
         db.commit()
 
-    # 2. Seed Default CMS Settings
+    # 2. Seed Operator Account
+    op_user = db.query(User).filter(User.email == settings.DEFAULT_OPERATOR_EMAIL.lower()).first()
+    if not op_user:
+        logger.info(f"Seeding default Operator account: {settings.DEFAULT_OPERATOR_EMAIL}")
+        op_user = User(
+            email=settings.DEFAULT_OPERATOR_EMAIL.lower(),
+            hashed_password=hash_password(settings.DEFAULT_OPERATOR_PASSWORD),
+            full_name=settings.DEFAULT_OPERATOR_NAME,
+            role=UserRole.OPERATOR,
+            status=UserStatus.APPROVED,
+        )
+        db.add(op_user)
+        db.commit()
+
+    # 3. Seed Default CMS Settings
     seed_default_settings(db)
 
-    # Remove the legacy synthetic demo network from existing installations.
-    # These IDs are reserved for the original sample cameras; user-created cameras are unaffected.
-    demo_camera_ids = ("CAM-001", "CAM-002", "CAM-003")
-    demo_cameras = db.query(Camera).filter(
-        Camera.camera_id.in_(demo_camera_ids),
-        Camera.url == "synthetic",
-    ).all()
-    if demo_cameras:
-        ids_to_remove = [camera.camera_id for camera in demo_cameras]
-        db.query(Incident).filter(Incident.camera_id.in_(ids_to_remove)).delete(synchronize_session=False)
-        db.query(Camera).filter(Camera.camera_id.in_(ids_to_remove)).delete(synchronize_session=False)
-        logger.info("Removed %d legacy demo camera(s).", len(ids_to_remove))
-
+    # 4. Seed Standard Camera Fleet
+    sample_cameras = [
+        Camera(
+            camera_id="CAM-001",
+            name="NH-44 Expressway North Corridor",
+            url="synthetic",
+            camera_type="synthetic",
+            location="NH-44 Highway Mile Marker 42, Northbound",
+            latitude=28.7041,
+            longitude=77.1025,
+            landmark="Overpass Junction 4",
+            zone="Highway North Zone",
+            description="High-speed arterial highway monitor with multi-lane optical tracking.",
+            status="ONLINE",
+            is_enabled=True,
+        ),
+        Camera(
+            camera_id="CAM-002",
+            name="Central Metro Commercial Intersection",
+            url="synthetic",
+            camera_type="synthetic",
+            location="5th Avenue & Ring Road Central",
+            latitude=28.6139,
+            longitude=77.2090,
+            landmark="City Financial Plaza",
+            zone="Downtown Sector 1",
+            description="Urban intersection monitoring pedestrian crossings and vehicle convergence.",
+            status="ONLINE",
+            is_enabled=True,
+        ),
+        Camera(
+            camera_id="CAM-003",
+            name="Industrial Logistics & Fuel Depot Hub",
+            url="synthetic",
+            camera_type="synthetic",
+            location="Sector 18 Hazmat & Freight Terminal",
+            latitude=28.5355,
+            longitude=77.3910,
+            landmark="Warehouse Gate 2B",
+            zone="Industrial Corridor",
+            description="Thermal and optical monitoring for flame, heavy smoke, and hazmat emergencies.",
+            status="ONLINE",
+            is_enabled=True,
+        ),
+    ]
+    for cam in sample_cameras:
+        existing_cam = db.query(Camera).filter(Camera.camera_id == cam.camera_id).first()
+        if not existing_cam:
+            db.add(cam)
     db.commit()
 
 
@@ -96,10 +146,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Configure CORS
+# Configure CORS for all domains / local dev / Render
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[origin.strip() for origin in settings.CORS_ORIGINS.split(",") if origin.strip()],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

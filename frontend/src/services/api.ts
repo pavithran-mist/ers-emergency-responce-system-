@@ -1,10 +1,14 @@
 import { User, Camera, Incident, SystemSetting, AuditLog, AIStatus } from '../types';
 
-const API_BASE = '/api/v1';
+// Dynamically resolve API base from environment or current host
+export const API_BASE =
+  (import.meta.env.VITE_API_BASE as string) ||
+  (import.meta.env.VITE_API_URL as string) ||
+  '/api/v1';
 
 function getAuthHeaders(): HeadersInit {
   const token = localStorage.getItem('astra_token');
-  const headers: HeadersInit = {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
   if (token) {
@@ -13,18 +17,78 @@ function getAuthHeaders(): HeadersInit {
   return headers;
 }
 
+/**
+ * Reusable, robust API response handler:
+ * 1. Checks HTTP status
+ * 2. Inspects Content-Type header
+ * 3. Safely parses JSON without throwing on empty/HTML responses
+ * 4. Extracts meaningful error details
+ * 5. Returns typed payload or actionable error message
+ */
 async function handleResponse<T>(res: Response): Promise<T> {
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(errorData.detail || 'An unexpected error occurred.');
+  const contentType = res.headers.get('content-type') || '';
+  let data: any = null;
+
+  if (contentType.includes('application/json')) {
+    try {
+      data = await res.json();
+    } catch {
+      data = null;
+    }
+  } else {
+    try {
+      const text = await res.text();
+      data = text && !text.startsWith('<!DOCTYPE') ? { detail: text.slice(0, 300) } : null;
+    } catch {
+      data = null;
+    }
   }
-  return res.json();
+
+  if (!res.ok) {
+    let errorMsg = data?.detail || data?.message;
+    if (!errorMsg) {
+      if (res.status === 401) {
+        errorMsg = 'Invalid email or password.';
+      } else if (res.status === 403) {
+        errorMsg = 'Access restricted: account pending approval or deactivated.';
+      } else if (res.status === 404) {
+        errorMsg = `API service endpoint not found (HTTP 404). Please verify backend status.`;
+      } else if (res.status >= 500) {
+        errorMsg = 'ASTRA AI server encountered an internal error. Please try again.';
+      } else {
+        errorMsg = `Request failed with HTTP status ${res.status}.`;
+      }
+    }
+    throw new Error(errorMsg);
+  }
+
+  if (data === null) {
+    // If response was 204 No Content, return empty object
+    if (res.status === 204) {
+      return {} as T;
+    }
+    throw new Error('Server returned an empty or unparseable response.');
+  }
+
+  return data as T;
+}
+
+/** Safe fetch wrapper with network error catch */
+async function safeFetch(url: string, options?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, options);
+  } catch (err: any) {
+    console.error('ASTRA Network Fetch Error:', err);
+    throw new Error(
+      'Unable to connect to the ASTRA AI authentication server. Please verify backend service connectivity.'
+    );
+  }
 }
 
 export const api = {
   // Auth
   async login(email: string, password: string) {
-    const res = await fetch(`${API_BASE}/auth/login`, {
+    const res = await safeFetch(`${API_BASE}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
@@ -33,7 +97,7 @@ export const api = {
   },
 
   async register(email: string, password: string, full_name: string) {
-    const res = await fetch(`${API_BASE}/auth/register`, {
+    const res = await safeFetch(`${API_BASE}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, full_name }),
@@ -42,14 +106,14 @@ export const api = {
   },
 
   async getMe(): Promise<User> {
-    const res = await fetch(`${API_BASE}/auth/me`, {
+    const res = await safeFetch(`${API_BASE}/auth/me`, {
       headers: getAuthHeaders(),
     });
     return handleResponse<User>(res);
   },
 
   async logout() {
-    const res = await fetch(`${API_BASE}/auth/logout`, {
+    const res = await safeFetch(`${API_BASE}/auth/logout`, {
       method: 'POST',
       headers: getAuthHeaders(),
     });
@@ -58,17 +122,17 @@ export const api = {
 
   // Admin Users
   async getUsers(): Promise<User[]> {
-    const res = await fetch(`${API_BASE}/admin/users`, { headers: getAuthHeaders() });
+    const res = await safeFetch(`${API_BASE}/admin/users`, { headers: getAuthHeaders() });
     return handleResponse<User[]>(res);
   },
 
   async getPendingUsers(): Promise<User[]> {
-    const res = await fetch(`${API_BASE}/admin/users/pending`, { headers: getAuthHeaders() });
+    const res = await safeFetch(`${API_BASE}/admin/users/pending`, { headers: getAuthHeaders() });
     return handleResponse<User[]>(res);
   },
 
   async approveUser(userId: number): Promise<User> {
-    const res = await fetch(`${API_BASE}/admin/users/${userId}/approve`, {
+    const res = await safeFetch(`${API_BASE}/admin/users/${userId}/approve`, {
       method: 'POST',
       headers: getAuthHeaders(),
     });
@@ -76,7 +140,7 @@ export const api = {
   },
 
   async rejectUser(userId: number): Promise<User> {
-    const res = await fetch(`${API_BASE}/admin/users/${userId}/reject`, {
+    const res = await safeFetch(`${API_BASE}/admin/users/${userId}/reject`, {
       method: 'POST',
       headers: getAuthHeaders(),
     });
@@ -84,7 +148,7 @@ export const api = {
   },
 
   async disableUser(userId: number): Promise<User> {
-    const res = await fetch(`${API_BASE}/admin/users/${userId}/disable`, {
+    const res = await safeFetch(`${API_BASE}/admin/users/${userId}/disable`, {
       method: 'POST',
       headers: getAuthHeaders(),
     });
@@ -92,7 +156,7 @@ export const api = {
   },
 
   async enableUser(userId: number): Promise<User> {
-    const res = await fetch(`${API_BASE}/admin/users/${userId}/enable`, {
+    const res = await safeFetch(`${API_BASE}/admin/users/${userId}/enable`, {
       method: 'POST',
       headers: getAuthHeaders(),
     });
@@ -100,7 +164,7 @@ export const api = {
   },
 
   async changeUserRole(userId: number, role: 'ADMIN' | 'OPERATOR'): Promise<User> {
-    const res = await fetch(`${API_BASE}/admin/users/${userId}/role`, {
+    const res = await safeFetch(`${API_BASE}/admin/users/${userId}/role`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify({ role }),
@@ -110,17 +174,17 @@ export const api = {
 
   // Cameras
   async getCameras(): Promise<Camera[]> {
-    const res = await fetch(`${API_BASE}/cameras`, { headers: getAuthHeaders() });
+    const res = await safeFetch(`${API_BASE}/cameras`, { headers: getAuthHeaders() });
     return handleResponse<Camera[]>(res);
   },
 
   async getCamera(id: string): Promise<Camera> {
-    const res = await fetch(`${API_BASE}/cameras/${id}`, { headers: getAuthHeaders() });
+    const res = await safeFetch(`${API_BASE}/cameras/${id}`, { headers: getAuthHeaders() });
     return handleResponse<Camera>(res);
   },
 
   async createCamera(camera: Partial<Camera>): Promise<Camera> {
-    const res = await fetch(`${API_BASE}/cameras`, {
+    const res = await safeFetch(`${API_BASE}/cameras`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify(camera),
@@ -129,7 +193,7 @@ export const api = {
   },
 
   async updateCamera(id: string, camera: Partial<Camera>): Promise<Camera> {
-    const res = await fetch(`${API_BASE}/cameras/${id}`, {
+    const res = await safeFetch(`${API_BASE}/cameras/${id}`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify(camera),
@@ -138,7 +202,7 @@ export const api = {
   },
 
   async deleteCamera(id: string): Promise<{ message: string }> {
-    const res = await fetch(`${API_BASE}/cameras/${id}`, {
+    const res = await safeFetch(`${API_BASE}/cameras/${id}`, {
       method: 'DELETE',
       headers: getAuthHeaders(),
     });
@@ -146,7 +210,7 @@ export const api = {
   },
 
   async testCamera(id: string): Promise<{ camera_id: string; status: string; is_connected: boolean; message: string }> {
-    const res = await fetch(`${API_BASE}/cameras/${id}/test`, {
+    const res = await safeFetch(`${API_BASE}/cameras/${id}/test`, {
       method: 'POST',
       headers: getAuthHeaders(),
     });
@@ -154,12 +218,12 @@ export const api = {
   },
 
   async startCamera(id: string) {
-    const res = await fetch(`${API_BASE}/cameras/${id}/start`, { method: 'POST', headers: getAuthHeaders() });
+    const res = await safeFetch(`${API_BASE}/cameras/${id}/start`, { method: 'POST', headers: getAuthHeaders() });
     return handleResponse<{ message: string }>(res);
   },
 
   async stopCamera(id: string) {
-    const res = await fetch(`${API_BASE}/cameras/${id}/stop`, { method: 'POST', headers: getAuthHeaders() });
+    const res = await safeFetch(`${API_BASE}/cameras/${id}/stop`, { method: 'POST', headers: getAuthHeaders() });
     return handleResponse<{ message: string }>(res);
   },
 
@@ -172,12 +236,12 @@ export const api = {
     if (params?.camera_id) query.append('camera_id', params.camera_id);
     if (params?.limit) query.append('limit', String(params.limit));
 
-    const res = await fetch(`${API_BASE}/incidents?${query.toString()}`, { headers: getAuthHeaders() });
+    const res = await safeFetch(`${API_BASE}/incidents?${query.toString()}`, { headers: getAuthHeaders() });
     return handleResponse<Incident[]>(res);
   },
 
   async getIncidentSummary() {
-    const res = await fetch(`${API_BASE}/incidents/summary`, { headers: getAuthHeaders() });
+    const res = await safeFetch(`${API_BASE}/incidents/summary`, { headers: getAuthHeaders() });
     return handleResponse<{
       total_incidents: number;
       new_incidents: number;
@@ -192,12 +256,12 @@ export const api = {
   },
 
   async getIncident(id: string): Promise<Incident> {
-    const res = await fetch(`${API_BASE}/incidents/${id}`, { headers: getAuthHeaders() });
+    const res = await safeFetch(`${API_BASE}/incidents/${id}`, { headers: getAuthHeaders() });
     return handleResponse<Incident>(res);
   },
 
   async acknowledgeIncident(id: string): Promise<Incident> {
-    const res = await fetch(`${API_BASE}/incidents/${id}/acknowledge`, {
+    const res = await safeFetch(`${API_BASE}/incidents/${id}/acknowledge`, {
       method: 'POST',
       headers: getAuthHeaders(),
     });
@@ -205,7 +269,7 @@ export const api = {
   },
 
   async resolveIncident(id: string): Promise<Incident> {
-    const res = await fetch(`${API_BASE}/incidents/${id}/resolve`, {
+    const res = await safeFetch(`${API_BASE}/incidents/${id}/resolve`, {
       method: 'POST',
       headers: getAuthHeaders(),
     });
@@ -213,7 +277,7 @@ export const api = {
   },
 
   async addIncidentNotes(id: string, notes: string): Promise<Incident> {
-    const res = await fetch(`${API_BASE}/incidents/${id}/notes`, {
+    const res = await safeFetch(`${API_BASE}/incidents/${id}/notes`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({ notes }),
@@ -224,46 +288,46 @@ export const api = {
   // Department alerts
   async getPoliceAlerts(status?: string): Promise<Incident[]> {
     const q = status ? `?status=${status}` : '';
-    const res = await fetch(`${API_BASE}/alerts/police${q}`, { headers: getAuthHeaders() });
+    const res = await safeFetch(`${API_BASE}/alerts/police${q}`, { headers: getAuthHeaders() });
     return handleResponse<Incident[]>(res);
   },
 
   async getFireAlerts(status?: string): Promise<Incident[]> {
     const q = status ? `?status=${status}` : '';
-    const res = await fetch(`${API_BASE}/alerts/fire${q}`, { headers: getAuthHeaders() });
+    const res = await safeFetch(`${API_BASE}/alerts/fire${q}`, { headers: getAuthHeaders() });
     return handleResponse<Incident[]>(res);
   },
 
   async getAmbulanceAlerts(status?: string): Promise<Incident[]> {
     const q = status ? `?status=${status}` : '';
-    const res = await fetch(`${API_BASE}/alerts/ambulance${q}`, { headers: getAuthHeaders() });
+    const res = await safeFetch(`${API_BASE}/alerts/ambulance${q}`, { headers: getAuthHeaders() });
     return handleResponse<Incident[]>(res);
   },
 
   // AI & Analytics
   async getAIStatus(): Promise<AIStatus> {
-    const res = await fetch(`${API_BASE}/ai/status`, { headers: getAuthHeaders() });
+    const res = await safeFetch(`${API_BASE}/ai/status`, { headers: getAuthHeaders() });
     return handleResponse<AIStatus>(res);
   },
 
   async getAIDetections() {
-    const res = await fetch(`${API_BASE}/ai/detections`, { headers: getAuthHeaders() });
+    const res = await safeFetch(`${API_BASE}/ai/detections`, { headers: getAuthHeaders() });
     return handleResponse<any[]>(res);
   },
 
   async getAIStatistics() {
-    const res = await fetch(`${API_BASE}/ai/statistics`, { headers: getAuthHeaders() });
+    const res = await safeFetch(`${API_BASE}/ai/statistics`, { headers: getAuthHeaders() });
     return handleResponse<any>(res);
   },
 
   // Settings & CMS
   async getSettings(): Promise<SystemSetting[]> {
-    const res = await fetch(`${API_BASE}/admin/settings`, { headers: getAuthHeaders() });
+    const res = await safeFetch(`${API_BASE}/admin/settings`, { headers: getAuthHeaders() });
     return handleResponse<SystemSetting[]>(res);
   },
 
   async updateSettings(settings: Record<string, string>): Promise<SystemSetting[]> {
-    const res = await fetch(`${API_BASE}/admin/settings`, {
+    const res = await safeFetch(`${API_BASE}/admin/settings`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify({ settings }),
@@ -273,7 +337,7 @@ export const api = {
 
   // Audit Logs
   async getAuditLogs(limit: number = 100): Promise<AuditLog[]> {
-    const res = await fetch(`${API_BASE}/admin/audit-logs?limit=${limit}`, { headers: getAuthHeaders() });
+    const res = await safeFetch(`${API_BASE}/admin/audit-logs?limit=${limit}`, { headers: getAuthHeaders() });
     return handleResponse<AuditLog[]>(res);
   },
 };

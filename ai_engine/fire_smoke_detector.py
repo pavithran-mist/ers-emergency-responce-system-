@@ -204,10 +204,7 @@ class FireSmokeDetector:
                                 confidence=conf,
                                 bounding_box=(bx, by, bx + bw, by + bh),
                                 reason="radiant_flame_intensity",
-                                # This is a backup visual candidate. It still must
-                                # persist in the same image region for several
-                                # frames before TemporalVerifier creates an alert.
-                                backend="optical_fallback",
+                                backend="heuristic",
                                 timestamp=timestamp,
                                 risk="CRITICAL" if area > 1200 else "HIGH",
                             )
