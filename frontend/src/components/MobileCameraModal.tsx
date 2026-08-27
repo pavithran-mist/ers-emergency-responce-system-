@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { api } from '../services/api';
-import { Smartphone, X, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Smartphone, X, RefreshCw, AlertTriangle, ShieldAlert, CheckCircle2, Navigation } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 interface MobileCameraModalProps {
   isOpen: boolean;
@@ -8,6 +9,7 @@ interface MobileCameraModalProps {
 }
 
 export const MobileCameraModal: React.FC<MobileCameraModalProps> = ({ isOpen, onClose }) => {
+  const navigate = useNavigate();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -18,9 +20,29 @@ export const MobileCameraModal: React.FC<MobileCameraModalProps> = ({ isOpen, on
   const [hazards, setHazards] = useState<any[]>([]);
   const [fps, setFps] = useState<number>(0);
   const [vehicleCount, setVehicleCount] = useState<number>(0);
+  const [activeIncident, setActiveIncident] = useState<any | null>(null);
+  const [locationCoords, setLocationCoords] = useState<{ latitude: number; longitude: number } | null>(null);
 
   const streamRef = useRef<MediaStream | null>(null);
   const isProcessingRef = useRef(false);
+
+  // Request GPS location for emergency geo-tagging
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setLocationCoords({
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+          });
+        },
+        () => {
+          // Fallback to default
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    }
+  }, [isOpen]);
 
   const startCamera = async (mode: 'environment' | 'user') => {
     setError(null);
@@ -46,7 +68,7 @@ export const MobileCameraModal: React.FC<MobileCameraModalProps> = ({ isOpen, on
       setIsStreaming(true);
     } catch (err: any) {
       console.error('Camera access error:', err);
-      setError(err.message || 'Unable to access device camera. Please check camera permissions.');
+      setError(err.message || 'Unable to access device camera. Please grant camera permission.');
       setIsStreaming(false);
     }
   };
@@ -60,6 +82,7 @@ export const MobileCameraModal: React.FC<MobileCameraModalProps> = ({ isOpen, on
         streamRef.current = null;
       }
       setIsStreaming(false);
+      setActiveIncident(null);
     }
     return () => {
       if (streamRef.current) {
@@ -103,6 +126,17 @@ export const MobileCameraModal: React.FC<MobileCameraModalProps> = ({ isOpen, on
           setHazards(res.hazards || []);
           setVehicleCount(res.vehicle_count || 0);
 
+          // Handle newly recorded incidents
+          if (res.created_incidents && res.created_incidents.length > 0) {
+            const inc = res.created_incidents[0];
+            setActiveIncident(inc);
+
+            // Vibrate phone for emergency alert
+            if (navigator.vibrate) {
+              navigator.vibrate([300, 150, 300, 150, 500]);
+            }
+          }
+
           // Calculate FPS
           frameCount++;
           const now = performance.now();
@@ -132,8 +166,8 @@ export const MobileCameraModal: React.FC<MobileCameraModalProps> = ({ isOpen, on
           <div className="flex items-center space-x-2">
             <Smartphone className="w-5 h-5 text-cyan-400 animate-pulse" />
             <div>
-              <h2 className="text-sm font-bold text-white">Live Phone Camera AI Scanner</h2>
-              <p className="text-[11px] text-slate-400 font-mono">Real-time mobile YOLO neural detection</p>
+              <h2 className="text-sm font-bold text-white">Mobile Camera AI Incident Detector</h2>
+              <p className="text-[11px] text-slate-400 font-mono">Live YOLO Vision + Emergency Dispatch</p>
             </div>
           </div>
           <div className="flex items-center space-x-2">
@@ -150,6 +184,33 @@ export const MobileCameraModal: React.FC<MobileCameraModalProps> = ({ isOpen, on
             </button>
           </div>
         </div>
+
+        {/* Emergency Incident Banner (Pop-up when detected) */}
+        {activeIncident && (
+          <div className="bg-gradient-to-r from-red-600 via-rose-600 to-red-700 p-3 text-white shadow-lg animate-pulse flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <ShieldAlert className="w-5 h-5 text-yellow-300 animate-bounce" />
+              <div>
+                <div className="font-bold text-xs flex items-center space-x-1.5">
+                  <span>?? EMERGENCY INCIDENT RECORDED!</span>
+                  <span className="bg-black/40 px-1.5 py-0.5 rounded text-[10px] font-mono">{activeIncident.incident_id}</span>
+                </div>
+                <div className="text-[11px] text-red-100 font-mono">
+                  {activeIncident.event_type.toUpperCase().replace('_', ' ')} • DISPATCHED TO {activeIncident.department}
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                onClose();
+                navigate('/incidents');
+              }}
+              className="px-3 py-1 bg-white text-red-600 hover:bg-red-50 rounded-lg text-xs font-bold shadow transition-all font-sans"
+            >
+              View Report
+            </button>
+          </div>
+        )}
 
         {/* Video Viewport with AR Bounding Boxes */}
         <div className="relative bg-black flex-1 min-h-[320px] sm:min-h-[400px] flex items-center justify-center overflow-hidden">
@@ -185,7 +246,7 @@ export const MobileCameraModal: React.FC<MobileCameraModalProps> = ({ isOpen, on
                   </span>
                 ) : (
                   <span className="px-2 py-0.5 bg-black/70 backdrop-blur-sm rounded border border-slate-700 text-slate-300">
-                    STATUS: NOMINAL
+                    STATUS: MONITORING
                   </span>
                 )}
               </div>
@@ -238,11 +299,14 @@ export const MobileCameraModal: React.FC<MobileCameraModalProps> = ({ isOpen, on
         </div>
 
         {/* Footer controls */}
-        <div className="p-3 bg-slate-950 border-t border-slate-800 flex items-center justify-between text-xs font-mono text-slate-400">
-          <span>Point your phone camera at vehicles, traffic, or objects.</span>
+        <div className="p-3 bg-slate-950 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs font-mono text-slate-400">
+          <div className="flex items-center space-x-1.5 text-[11px] text-slate-300">
+            <Navigation className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Fires & accidents detected will auto-record emergency dispatch incidents.</span>
+          </div>
           <button
             onClick={onClose}
-            className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-sans font-semibold"
+            className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-sans font-semibold w-full sm:w-auto"
           >
             Close Scanner
           </button>

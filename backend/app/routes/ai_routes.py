@@ -129,26 +129,40 @@ def get_ai_statistics(
 
 import base64
 import cv2
+import time
+import logging
+from datetime import datetime, timezone
+from typing import Optional
 import numpy as np
 from pydantic import BaseModel
+
+from backend.app.database import SessionLocal
+from backend.app.models import Incident, IncidentStatus, IncidentDepartment
+from backend.app.ws_manager import ws_manager
 from ai_engine.detector import ObjectDetector
 from ai_engine.accident_detector import AccidentDetector
 from ai_engine.fire_smoke_detector import FireSmokeDetector
+from ai_engine.temporal_verifier import TemporalVerifier
+
+logger = logging.getLogger("astra.mobile_ai")
 
 _shared_detector = ObjectDetector(confidence_threshold=0.20)
 _shared_accident = AccidentDetector()
 _shared_fire = FireSmokeDetector(enable_heuristic_fire=True, enable_heuristic_smoke=False)
+_shared_temporal_verifier = TemporalVerifier(window_size=4, min_hits=2, cooldown_seconds=5.0)
 
 
 class FrameDetectRequest(BaseModel):
     image_base64: str
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
 
 @router.post("/detect-frame")
 def detect_mobile_frame(
     req: FrameDetectRequest,
 ):
-    """Run live YOLO inference on frames streamed directly from phone browser camera."""
+    """Run live YOLO inference on frames streamed from phone browser camera, persist emergency incidents, and broadcast alerts."""
     try:
         data = req.image_base64
         if "," in data:
@@ -158,25 +172,105 @@ def detect_mobile_frame(
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
         if frame is None:
-            return {"status": "error", "detections": [], "hazards": []}
+            return {"status": "error", "detections": [], "hazards": [], "created_incidents": []}
+
+        current_time = time.time()
 
         # 1. YOLO vehicle & object detector
         detections = _shared_detector.detect(frame)
 
         # 2. Fire and smoke detector
-        fire_events = _shared_fire.detect(frame)
+        fire_events = _shared_fire.detect(frame, timestamp=current_time)
 
         # 3. Accident detector
-        accident_events = _shared_accident.detect(frame, [])
+        accident_events = _shared_accident.detect(frame, [], timestamp=current_time)
 
-        hazards = [e.to_dict() for e in fire_events] + [e.to_dict() for e in accident_events]
+        raw_hazards = [e.to_dict() for e in fire_events] + [e.to_dict() for e in accident_events]
+
+        # 4. Temporal verification filter
+        verified_hazards = _shared_temporal_verifier.process_frame(raw_hazards, timestamp=current_time)
+
+        # 5. Automatically record incident and broadcast live emergency dispatch alert
+        created_incidents = []
+        if verified_hazards:
+            db: Session = SessionLocal()
+            try:
+                for vh in verified_hazards:
+                    now_utc = datetime.now(timezone.utc)
+                    timestamp_str = now_utc.strftime("%Y%m%d%H%M%S")
+                    rand_suffix = int(time.time() * 1000) % 1000
+                    incident_id = f"INC-MOBILE-{timestamp_str}-{rand_suffix:03d}"
+
+                    event_type = vh.get("event_type", "possible_fire")
+                    dept = (
+                        IncidentDepartment.FIRE
+                        if "fire" in event_type or "smoke" in event_type
+                        else IncidentDepartment.POLICE
+                    )
+
+                    inc = Incident(
+                        incident_id=incident_id,
+                        camera_id="CAM-MOBILE",
+                        camera_name="Mobile Device Live Scanner",
+                        event_type=event_type,
+                        risk=vh.get("risk", "CRITICAL"),
+                        confidence=float(vh.get("confidence", 0.88)),
+                        reason=vh.get("reason", "Mobile AI optical detection"),
+                        backend=vh.get("backend", "yolo_model"),
+                        status=IncidentStatus.NEW,
+                        department=dept,
+                        location="Mobile Field Scanner Location",
+                        latitude=req.latitude if req.latitude is not None else 28.6139,
+                        longitude=req.longitude if req.longitude is not None else 77.2090,
+                        landmark="Live Field GPS Position",
+                        zone="Mobile Patrol Sector",
+                        bounding_box=str(vh.get("bounding_box", [0, 0, 0, 0])),
+                        notes=f"Emergency incident detected directly by Mobile Phone Camera ({vh.get('backend', 'yolo_model')}).",
+                        created_at=now_utc,
+                    )
+                    db.add(inc)
+                    db.commit()
+                    db.refresh(inc)
+
+                    alert_payload = {
+                        "type": "NEW_INCIDENT",
+                        "incident": {
+                            "id": inc.id,
+                            "incident_id": inc.incident_id,
+                            "camera_id": inc.camera_id,
+                            "camera_name": inc.camera_name,
+                            "event_type": inc.event_type,
+                            "risk": inc.risk,
+                            "confidence": inc.confidence,
+                            "reason": inc.reason,
+                            "backend": inc.backend,
+                            "status": inc.status.value,
+                            "department": inc.department.value,
+                            "location": inc.location,
+                            "latitude": inc.latitude,
+                            "longitude": inc.longitude,
+                            "landmark": inc.landmark,
+                            "zone": inc.zone,
+                            "bounding_box": inc.bounding_box,
+                            "notes": inc.notes,
+                            "created_at": inc.created_at.isoformat(),
+                        },
+                    }
+                    ws_manager.broadcast_sync(alert_payload)
+                    created_incidents.append(alert_payload["incident"])
+                    logger.info(f"Recorded Mobile Camera Incident {incident_id} ({event_type}) and broadcast alert.")
+            except Exception as e:
+                logger.error(f"Error persisting mobile camera incident: {e}")
+            finally:
+                db.close()
 
         return {
             "status": "success",
             "detections": [d.to_dict() for d in detections],
-            "hazards": hazards,
+            "hazards": raw_hazards,
+            "created_incidents": created_incidents,
             "vehicle_count": len(detections),
-            "risk_level": "CRITICAL" if hazards else "LOW",
+            "risk_level": "CRITICAL" if raw_hazards else "LOW",
         }
     except Exception as e:
-        return {"status": "error", "error": str(e), "detections": [], "hazards": []}
+        return {"status": "error", "error": str(e), "detections": [], "hazards": [], "created_incidents": []}
