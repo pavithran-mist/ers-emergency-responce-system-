@@ -75,20 +75,48 @@ export const AdminCamerasPage: React.FC = () => {
     setTestResult(null);
     setFormData({
       camera_id: `CAM-00${cameras.length + 1}`,
-      name: '',
-      url: 'synthetic',
-      camera_type: 'synthetic',
-      location: '',
-      latitude: '',
-      longitude: '',
-      landmark: '',
-      zone: '',
-      description: '',
+      name: 'Primary Operations Webcam',
+      url: '0',
+      camera_type: 'webcam',
+      location: 'Command Center - Station 1',
+      latitude: '28.6139',
+      longitude: '77.2090',
+      landmark: 'Main Operations Desk',
+      zone: 'Control Room Alpha',
+      description: 'Physical optical camera sensor',
       username: '',
       password: '',
       is_enabled: true,
     });
     setIsModalOpen(true);
+  };
+
+  const handleTypeChange = (newType: string) => {
+    let defaultUrl = formData.url;
+    let defaultName = formData.name;
+
+    if (newType === 'webcam') {
+      defaultUrl = '0';
+      if (!formData.name || formData.name.includes('Simulator') || formData.name.includes('RTSP')) {
+        defaultName = 'Primary Operations Webcam';
+      }
+    } else if (newType === 'rtsp') {
+      defaultUrl = 'rtsp://192.168.1.100:554/live';
+      defaultName = 'RTSP Corridor Camera';
+    } else if (newType === 'video_file') {
+      defaultUrl = 'datasets/sample_traffic.mp4';
+      defaultName = 'Local Video File Feed';
+    } else if (newType === 'ip_stream') {
+      defaultUrl = 'http://192.168.1.100:8080/video';
+      defaultName = 'IP Network Camera';
+    }
+
+    setFormData({
+      ...formData,
+      camera_type: newType,
+      url: defaultUrl,
+      name: defaultName,
+    });
   };
 
   const openEditModal = (cam: Camera) => {
@@ -333,7 +361,52 @@ export const AdminCamerasPage: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleSaveCamera} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+            <form onSubmit={handleSaveCamera} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+              {/* Quick Preset Selector */}
+              {!editingCamera && (
+                <div className="bg-slate-950/70 p-3 rounded-xl border border-slate-800 space-y-2">
+                  <div className="text-[11px] font-mono uppercase text-slate-400 font-semibold flex items-center justify-between">
+                    <span>⚡ Quick Setup Preset:</span>
+                    <span className="text-cyan-400 font-normal">Click to auto-fill</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleTypeChange('webcam')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-all ${
+                        formData.camera_type === 'webcam'
+                          ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+                          : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                      }`}
+                    >
+                      <span>📷 Local Webcam (0)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleTypeChange('rtsp')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-all ${
+                        formData.camera_type === 'rtsp'
+                          ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+                          : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                      }`}
+                    >
+                      <span>🌐 RTSP IP Feed</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleTypeChange('video_file')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-all ${
+                        formData.camera_type === 'video_file'
+                          ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+                          : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                      }`}
+                    >
+                      <span>📁 Video File</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Camera ID *</label>
@@ -343,7 +416,7 @@ export const AdminCamerasPage: React.FC = () => {
                     disabled={!!editingCamera}
                     value={formData.camera_id}
                     onChange={(e) => setFormData({ ...formData, camera_id: e.target.value })}
-                    placeholder="CAM-005"
+                    placeholder="CAM-001"
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-cyan-300 font-mono focus:outline-none focus:border-cyan-500"
                   />
                 </div>
@@ -355,7 +428,7 @@ export const AdminCamerasPage: React.FC = () => {
                     required
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="Harbor Expressway Flyover"
+                    placeholder="Primary Operations Webcam"
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-cyan-500"
                   />
                 </div>
@@ -364,13 +437,12 @@ export const AdminCamerasPage: React.FC = () => {
                   <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Camera Type *</label>
                   <select
                     value={formData.camera_type}
-                    onChange={(e) => setFormData({ ...formData, camera_type: e.target.value })}
+                    onChange={(e) => handleTypeChange(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
                   >
-                    <option value="synthetic">Synthetic Traffic Simulator</option>
+                    <option value="webcam">Local Webcam (Index 0, 1)</option>
                     <option value="rtsp">RTSP Stream (rtsp://...)</option>
                     <option value="ip_stream">IP Camera Stream (http://...)</option>
-                    <option value="webcam">Local Webcam (Index 0, 1)</option>
                     <option value="video_file">Local Video File (MP4/AVI)</option>
                     <option value="phone_stream">Phone Camera Stream</option>
                   </select>
@@ -383,7 +455,7 @@ export const AdminCamerasPage: React.FC = () => {
                     required
                     value={formData.url}
                     onChange={(e) => setFormData({ ...formData, url: e.target.value })}
-                    placeholder="synthetic OR rtsp://192.168.1.100:554/feed"
+                    placeholder="0 OR rtsp://192.168.1.100:554/feed"
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono focus:outline-none focus:border-cyan-500"
                   />
                 </div>
