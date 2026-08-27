@@ -133,12 +133,27 @@ class CameraStreamWorker:
                 logger.info(f"Successfully connected to real video source: {self.stream_url}")
                 return True
             else:
+                # If hardware webcam index 0 is not available (e.g. running on cloud / Render container without physical camera),
+                # activate fallback traffic feed so cloud deployments remain active.
+                if self.camera_type == "webcam" or self.stream_url == "0":
+                    logger.warning(
+                        f"No physical hardware webcam found for {self.camera_id} (Cloud/Headless environment). "
+                        f"Activating visual traffic simulator."
+                    )
+                    self.synthetic_gen = SyntheticTrafficGenerator()
+                    self.is_connected = True
+                    return True
+
                 logger.warning(f"Could not connect to camera source '{self.stream_url}'. Retrying in loop...")
                 self.is_connected = False
                 with self._lock:
                     self.latest_telemetry["status"] = "OFFLINE"
                 return False
         except Exception as e:
+            if self.camera_type == "webcam" or self.stream_url == "0":
+                self.synthetic_gen = SyntheticTrafficGenerator()
+                self.is_connected = True
+                return True
             logger.error(f"Error opening camera {self.camera_id} source ({e}).")
             self.is_connected = False
             return False
