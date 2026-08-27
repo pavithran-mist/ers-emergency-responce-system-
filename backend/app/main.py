@@ -1,9 +1,10 @@
-"""Main FastAPI application entrypoint for ASTRA AI Platform."""
-
+import os
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
@@ -168,14 +169,52 @@ app.include_router(audit_router, prefix=api_v1)
 app.include_router(stream_router, prefix=api_v1)
 
 
-@app.get("/")
-def root():
-    return {
-        "platform": settings.APP_NAME,
-        "version": "2.0.0",
-        "status": "OPERATIONAL",
-        "docs_url": "/docs",
-    }
+# ----------------- STATIC SPA SERVING -----------------
+# Check for built frontend dist directory
+frontend_dist_paths = [
+    os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "frontend", "dist"),
+    os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "dist"),
+    os.path.join(os.getcwd(), "frontend", "dist"),
+    os.path.join(os.getcwd(), "dist"),
+]
+
+frontend_dist_dir = None
+for p in frontend_dist_paths:
+    if os.path.exists(p) and os.path.isdir(p):
+        frontend_dist_dir = p
+        break
+
+if frontend_dist_dir:
+    logger.info(f"Serving frontend static production bundle from {frontend_dist_dir}")
+    assets_dir = os.path.join(frontend_dist_dir, "assets")
+    if os.path.exists(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa_frontend(full_path: str):
+        if full_path.startswith("api/") or full_path.startswith("ws/"):
+            raise HTTPException(status_code=404, detail="API route not found.")
+        target_file = os.path.join(frontend_dist_dir, full_path)
+        if full_path and os.path.exists(target_file) and os.path.isfile(target_file):
+            return FileResponse(target_file)
+        index_file = os.path.join(frontend_dist_dir, "index.html")
+        if os.path.exists(index_file):
+            return FileResponse(index_file)
+        return {
+            "platform": settings.APP_NAME,
+            "version": "2.0.0",
+            "status": "OPERATIONAL",
+            "docs_url": "/docs",
+        }
+else:
+    @app.get("/")
+    def root():
+        return {
+            "platform": settings.APP_NAME,
+            "version": "2.0.0",
+            "status": "OPERATIONAL",
+            "docs_url": "/docs",
+        }
 
 
 @app.websocket("/ws/alerts")

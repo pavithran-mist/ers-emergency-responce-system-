@@ -1,0 +1,28 @@
+services:
+  # ASTRA AI Unified Full-Stack Emergency Command Platform
+  - type: web
+    name: astra-ai-command-platform
+    env: python
+    region: oregon
+    plan: starter
+    buildCommand: "cd frontend && npm install && npm run build && cd .. && pip install -r requirements.txt"
+    startCommand: "python -m uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: APP_ENV
+        value: production
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: CORS_ORIGINS
+        value: "*"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DEFAULT_ADMIN_EMAIL
+        value: "admin@astra.ai"
+      - key: DEFAULT_ADMIN_PASSWORD
+        value: "Admin@12345"
+      - key: DEFAULT_OPERATOR_EMAIL
+        value: "operator@astra.ai"
+      - key: DEFAULT_OPERATOR_PASSWORD
+        value: "Operator@123"
