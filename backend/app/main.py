@@ -171,101 +171,58 @@ frontend_dist_paths = [
     os.path.join(os.getcwd(), "dist"),
 ]
 
-frontend_dist_dir = None
-for p in frontend_dist_paths:
-    if os.path.exists(p) and os.path.isdir(p):
-        frontend_dist_dir = p
-        break
+def get_frontend_dist() -> Optional[str]:
+    search_paths = [
+        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "frontend", "dist"),
+        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "dist"),
+        os.path.join(os.getcwd(), "frontend", "dist"),
+        os.path.join(os.getcwd(), "dist"),
+    ]
+    for p in search_paths:
+        if os.path.exists(p) and os.path.isdir(p):
+            return p
+    return None
 
-from fastapi.responses import HTMLResponse
+# Mount static assets if directory exists
+dist_dir = get_frontend_dist()
+if dist_dir and os.path.exists(os.path.join(dist_dir, "assets")):
+    app.mount("/assets", StaticFiles(directory=os.path.join(dist_dir, "assets")), name="assets")
 
-LANDING_HTML = """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ASTRA AI - Emergency Response Platform</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-slate-950 text-slate-100 flex flex-col items-center justify-center min-h-screen p-6 font-sans">
-    <div class="max-w-md w-full bg-slate-900 border border-slate-800 p-8 rounded-2xl shadow-2xl text-center space-y-6">
-        <div class="inline-flex p-4 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 shadow-lg shadow-cyan-950/60 mb-2">
-            <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-            </svg>
-        </div>
-        
-        <div>
-            <h1 class="text-2xl font-black tracking-wider text-white">ASTRA AI v2.0</h1>
-            <p class="text-xs text-emerald-400 font-mono mt-1 font-bold">● CLOUD BACKEND ACTIVE & OPERATIONAL</p>
-        </div>
+@app.api_route("/{full_path:path}", methods=["GET", "HEAD"])
+async def serve_spa_frontend(full_path: str, request: Request):
+    if full_path.startswith("api/") or full_path.startswith("ws/"):
+        raise HTTPException(status_code=404, detail="API route not found.")
+    
+    accept_hdr = request.headers.get("accept", "")
+    is_html_client = "text/html" in accept_hdr or "application/xhtml+xml" in accept_hdr
 
-        <p class="text-xs text-slate-400">
-            Road Safety, Multi-Source Surveillance & Visual Emergency Response System.
-        </p>
+    # If an API/HTTP client or test requests the root without HTML accept header, return operational status JSON
+    if (full_path == "" or full_path == "/") and not is_html_client:
+        return {
+            "platform": settings.APP_NAME,
+            "version": "2.0.0",
+            "status": "OPERATIONAL",
+            "docs_url": "/docs",
+        }
 
-        <div class="space-y-3 pt-2">
-            <a href="https://astraai-xi.vercel.app" class="block w-full py-3 px-4 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-cyan-950/50 transition-all">
-                🚀 Launch Live Web App Dashboard
-            </a>
-            <a href="/docs" class="block w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-mono transition-colors">
-                📖 Open Interactive API Docs (Swagger)
-            </a>
-        </div>
-        
-        <div class="text-[11px] text-slate-500 font-mono border-t border-slate-800/80 pt-4">
-            AI Engine: YOLO11n • Incidents: Real Deep Learning
-        </div>
-    </div>
-</body>
-</html>
-"""
-
-if frontend_dist_dir:
-    logger.info(f"Serving frontend static production bundle from {frontend_dist_dir}")
-    assets_dir = os.path.join(frontend_dist_dir, "assets")
-    if os.path.exists(assets_dir):
-        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
-
-    @app.api_route("/{full_path:path}", methods=["GET", "HEAD"])
-    async def serve_spa_frontend(full_path: str, request: Request):
-        if full_path.startswith("api/") or full_path.startswith("ws/"):
-            raise HTTPException(status_code=404, detail="API route not found.")
-        accept_hdr = request.headers.get("accept", "")
-        if (full_path == "" or full_path == "/") and "text/html" not in accept_hdr:
-            return {
-                "platform": settings.APP_NAME,
-                "version": "2.0.0",
-                "status": "OPERATIONAL",
-                "docs_url": "/docs",
-            }
-        target_file = os.path.join(frontend_dist_dir, full_path)
+    current_dist = get_frontend_dist()
+    if current_dist:
+        target_file = os.path.join(current_dist, full_path)
         if full_path and os.path.exists(target_file) and os.path.isfile(target_file):
             return FileResponse(target_file)
-        index_file = os.path.join(frontend_dist_dir, "index.html")
+        index_file = os.path.join(current_dist, "index.html")
         if os.path.exists(index_file):
             return FileResponse(index_file)
-        if "text/html" in accept_hdr:
-            return HTMLResponse(content=LANDING_HTML)
-        return {
-            "platform": settings.APP_NAME,
-            "version": "2.0.0",
-            "status": "OPERATIONAL",
-            "docs_url": "/docs",
-        }
-else:
-    @app.api_route("/", methods=["GET", "HEAD"])
-    def root(request: Request):
-        accept_hdr = request.headers.get("accept", "")
-        if "text/html" in accept_hdr:
-            return HTMLResponse(content=LANDING_HTML)
-        return {
-            "platform": settings.APP_NAME,
-            "version": "2.0.0",
-            "status": "OPERATIONAL",
-            "docs_url": "/docs",
-        }
+
+    if is_html_client:
+        return HTMLResponse(content=LANDING_HTML)
+
+    return {
+        "platform": settings.APP_NAME,
+        "version": "2.0.0",
+        "status": "OPERATIONAL",
+        "docs_url": "/docs",
+    }
 
 
 @app.websocket("/ws/alerts")
