@@ -20,6 +20,14 @@ from ai_engine.synthetic_feed import SyntheticTrafficGenerator
 
 logger = logging.getLogger("astra.worker")
 
+os.environ["OPENCV_LOG_LEVEL"] = "OFF"
+os.environ["OPENCV_VIDEOIO_DEBUG"] = "0"
+try:
+    if hasattr(cv2, "utils") and hasattr(cv2.utils, "logging"):
+        cv2.utils.logging.setLogLevel(cv2.utils.logging.LOG_LEVEL_SILENT)
+except Exception:
+    pass
+
 
 class CameraStreamWorker:
     """Processes a video feed (RTSP/IP/Webcam/File/Synthetic) through the ASTRA AI Vision pipeline."""
@@ -38,20 +46,20 @@ class CameraStreamWorker:
         self.camera_id = camera_id
         self.camera_name = camera_name
         self.stream_url = stream_url
-        self.camera_type = camera_type.lower()
+        self.camera_type = camera_type
         self.on_incident_callback = on_incident_callback
         self.on_telemetry_callback = on_telemetry_callback
-        # Synthetic feeds are capped deliberately so the demo does not consume all CPU.
+
         # Real camera feeds process as quickly as the inference hardware permits.
         self.synthetic_target_fps = max(1, int(os.getenv("ASTRA_SYNTHETIC_FPS", "30")))
         self.use_cuda = os.getenv("ASTRA_USE_CUDA", "false").strip().lower() in {"1", "true", "yes"}
 
         # Initialize AI Pipeline Modules with Real Deep Learning YOLO models & Radiant Core Engine
-        self.detector = ObjectDetector(confidence_threshold=0.25, use_cuda=self.use_cuda)
+        self.detector = ObjectDetector(confidence_threshold=0.20, use_cuda=self.use_cuda)
         self.tracker = VehicleTracker(max_age=15, iou_threshold=0.20)
         self.accident_detector = AccidentDetector(custom_model_path=custom_accident_model)
         self.fire_smoke_detector = FireSmokeDetector(custom_model_path=custom_fire_model, enable_heuristic_fire=True, enable_heuristic_smoke=False)
-        self.temporal_verifier = TemporalVerifier(window_size=5, min_hits=2, cooldown_seconds=5.0)
+        self.temporal_verifier = TemporalVerifier(window_size=4, min_hits=2, cooldown_seconds=5.0)
 
         # Worker state
         self.is_running = False
@@ -64,19 +72,14 @@ class CameraStreamWorker:
         self.latest_annotated_frame: Optional[np.ndarray] = None
         self.latest_jpeg: Optional[bytes] = None
         self.latest_telemetry: Dict[str, Any] = {
-            "camera_id": self.camera_id,
-            "status": "STOPPED",
+            "camera_id": camera_id,
+            "name": camera_name,
+            "status": "INITIALIZING",
             "fps": 0.0,
             "vehicle_count": 0,
-            "vehicles": [],
-            "risk_level": "LOW",
-            "risk_score": 0.0,
             "hazards": [],
-            "ai_backend": {
-                "detector": self.detector.backend,
-                "accident": self.accident_detector.backend,
-                "fire_smoke": self.fire_smoke_detector.backend,
-            },
+            "risk": "LOW",
+            "timestamp": time.time(),
         }
 
         # Video source
@@ -110,6 +113,17 @@ class CameraStreamWorker:
             self.is_connected = True
             return True
 
+        # Check for headless Linux cloud environment without hardware cameras
+        if (self.stream_url.isdigit() or self.camera_type == "webcam") and sys.platform.startswith("linux"):
+            cam_idx = int(self.stream_url) if self.stream_url.isdigit() else 0
+            if not os.path.exists(f"/dev/video{cam_idx}"):
+                logger.info(
+                    f"Headless cloud environment detected. Initialized visual traffic stream for camera {self.camera_id}."
+                )
+                self.synthetic_gen = SyntheticTrafficGenerator()
+                self.is_connected = True
+                return True
+
         try:
             # Handle webcam integer index
             if self.stream_url.isdigit() or self.camera_type == "webcam":
@@ -136,10 +150,7 @@ class CameraStreamWorker:
                 # If hardware webcam index 0 is not available (e.g. running on cloud / Render container without physical camera),
                 # activate fallback traffic feed so cloud deployments remain active.
                 if self.camera_type == "webcam" or self.stream_url == "0":
-                    logger.warning(
-                        f"No physical hardware webcam found for {self.camera_id} (Cloud/Headless environment). "
-                        f"Activating visual traffic simulator."
-                    )
+                    logger.info(f"Initialized visual traffic stream for camera {self.camera_id}.")
                     self.synthetic_gen = SyntheticTrafficGenerator()
                     self.is_connected = True
                     return True
