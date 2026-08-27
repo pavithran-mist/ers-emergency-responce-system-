@@ -1,0 +1,9 @@
+{
+  "python.analysis.autoSearchPaths": true,
+  "terminal.integrated.cwd": "${workspaceFolder}",
+  "files.exclude": {
+    "**/.git": true,
+    "**/.pytest_cache": true,
+    "**/__pycache__": true
+  }
+}
