@@ -27,47 +27,22 @@ function getAuthHeaders(): HeadersInit {
  */
 async function handleResponse<T>(res: Response): Promise<T> {
   const contentType = res.headers.get('content-type') || '';
-  let data: any = null;
 
-  if (contentType.includes('application/json')) {
-    try {
-      data = await res.json();
-    } catch {
-      data = null;
-    }
-  } else {
-    try {
-      const text = await res.text();
-      data = text && !text.startsWith('<!DOCTYPE') ? { detail: text.slice(0, 300) } : null;
-    } catch {
-      data = null;
-    }
+  // If server returned HTML (Vercel SPA rewrite fallback), signal offline backend immediately
+  if (!contentType.includes('application/json')) {
+    throw new Error('BACKEND_UNAVAILABLE');
+  }
+
+  let data: any = null;
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error('BACKEND_UNAVAILABLE');
   }
 
   if (!res.ok) {
-    let errorMsg = data?.detail || data?.message;
-    if (!errorMsg) {
-      if (res.status === 401) {
-        errorMsg = 'Invalid email or password.';
-      } else if (res.status === 403) {
-        errorMsg = 'Access restricted: account pending approval or deactivated.';
-      } else if (res.status === 404) {
-        errorMsg = `API service endpoint not found (HTTP 404). Please verify backend status.`;
-      } else if (res.status >= 500) {
-        errorMsg = 'ASTRA AI server encountered an internal error. Please try again.';
-      } else {
-        errorMsg = `Request failed with HTTP status ${res.status}.`;
-      }
-    }
+    const errorMsg = data?.detail || data?.message || `Request failed with HTTP status ${res.status}.`;
     throw new Error(errorMsg);
-  }
-
-  if (data === null) {
-    // If response was 204 No Content, return empty object
-    if (res.status === 204) {
-      return {} as T;
-    }
-    throw new Error('Server returned an empty or unparseable response.');
   }
 
   return data as T;

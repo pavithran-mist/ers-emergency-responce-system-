@@ -23,13 +23,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const initAuth = async () => {
       const storedToken = localStorage.getItem('astra_token');
-      if (storedToken) {
+      const storedUser = localStorage.getItem('astra_user');
+      if (storedUser) {
+        try {
+          setUser(JSON.parse(storedUser));
+          setToken(storedToken || 'astra-demo-token');
+        } catch {
+          // ignore parsing error
+        }
+      } else if (storedToken) {
         try {
           const profile = await api.getMe();
           setUser(profile);
           setToken(storedToken);
         } catch (err) {
-          console.error('Session expired or invalid token:', err);
           localStorage.removeItem('astra_token');
           setUser(null);
           setToken(null);
@@ -42,6 +49,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = (newToken: string, newUser: User) => {
     localStorage.setItem('astra_token', newToken);
+    localStorage.setItem('astra_user', JSON.stringify(newUser));
     setToken(newToken);
     setUser(newUser);
   };
@@ -53,6 +61,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Ignore network errors on logout
     } finally {
       localStorage.removeItem('astra_token');
+      localStorage.removeItem('astra_user');
       setToken(null);
       setUser(null);
     }
