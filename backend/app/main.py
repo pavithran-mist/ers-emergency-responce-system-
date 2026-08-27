@@ -1,4 +1,11 @@
 import os
+import sys
+
+# Ensure project root is in sys.path for direct VS Code execution
+_proj_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if _proj_root not in sys.path:
+    sys.path.insert(0, _proj_root)
+
 import asyncio
 import logging
 from contextlib import asynccontextmanager
@@ -223,3 +230,9 @@ async def websocket_alerts_endpoint(websocket: WebSocket):
         await ws_manager.disconnect(websocket)
     except Exception:
         await ws_manager.disconnect(websocket)
+
+
+if __name__ == "__main__":
+    import uvicorn
+    logger.info("Starting ASTRA AI Platform from direct execution...")
+    uvicorn.run("backend.app.main:app", host="127.0.0.1", port=8000, reload=True)
