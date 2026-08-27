@@ -71,6 +71,8 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         wsUrl = apiBase.replace('http://', 'ws://').replace(/\/api\/v1\/?$/, '') + '/ws/alerts';
       } else if (apiBase.startsWith('https://')) {
         wsUrl = apiBase.replace('https://', 'wss://').replace(/\/api\/v1\/?$/, '') + '/ws/alerts';
+      } else if (typeof window !== 'undefined' && window.location.hostname.includes('vercel.app')) {
+        wsUrl = 'wss://ers-emergency-responce-system-backend.onrender.com/ws/alerts';
       } else {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const hostname = window.location.hostname;

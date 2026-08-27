@@ -3,9 +3,11 @@ import { User, Camera, Incident, SystemSetting, AuditLog, AIStatus } from '../ty
 export const API_BASE =
   (import.meta.env.VITE_API_BASE as string) ||
   (import.meta.env.VITE_API_URL as string) ||
-  (typeof window !== 'undefined' && window.location.port === '3000'
-    ? `http://${window.location.hostname}:8000/api/v1`
-    : '/api/v1');
+  (typeof window !== 'undefined' && window.location.hostname.includes('vercel.app')
+    ? 'https://ers-emergency-responce-system-backend.onrender.com/api/v1'
+    : typeof window !== 'undefined' && window.location.port === '3000'
+      ? `http://${window.location.hostname}:8000/api/v1`
+      : '/api/v1');
 
 function getAuthHeaders(): HeadersInit {
   const token = localStorage.getItem('astra_token');
