@@ -35,12 +35,6 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  const handleQuickLogin = (roleEmail: string, rolePass: string) => {
-    setEmail(roleEmail);
-    setPassword(rolePass);
-    setError(null);
-  };
-
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col justify-center items-center p-6 relative overflow-hidden">
       {/* Background Cyber Glow */}
@@ -113,38 +107,15 @@ export const LoginPage: React.FC = () => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 px-4 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:opacity-50 text-white rounded-lg text-sm font-semibold flex items-center justify-center space-x-2 transition-all shadow-lg shadow-cyan-950/50 cursor-pointer disabled:cursor-not-allowed"
+            className="w-full py-3 px-4 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:opacity-50 text-white rounded-lg text-sm font-semibold flex items-center justify-center space-x-2 transition-all shadow-lg shadow-cyan-950/50 cursor-pointer disabled:cursor-not-allowed mt-2"
           >
             <span>{loading ? 'Authenticating...' : 'Sign In to Command Center'}</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </form>
 
-        {/* Demo Fast Login Helper */}
-        <div className="pt-3 border-t border-slate-800/80 space-y-2">
-          <div className="text-[11px] font-mono text-slate-500 text-center uppercase tracking-wider">
-            Quick Fill Demo Accounts
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => handleQuickLogin('admin@astra.ai', 'Admin@12345')}
-              className="py-1.5 px-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-[11px] font-mono text-cyan-400 rounded transition-colors text-center cursor-pointer"
-            >
-              Super Admin
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickLogin('operator@astra.ai', 'Operator@123')}
-              className="py-1.5 px-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-[11px] font-mono text-slate-300 rounded transition-colors text-center cursor-pointer"
-            >
-              Operator (Sample)
-            </button>
-          </div>
-        </div>
-
         {/* Register Link */}
-        <div className="text-center text-xs text-slate-400">
+        <div className="pt-2 border-t border-slate-800/80 text-center text-xs text-slate-400">
           New personnel?{' '}
           <Link to="/register" className="text-cyan-400 hover:underline font-medium">
             Register for access approval
