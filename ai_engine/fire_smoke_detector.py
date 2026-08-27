@@ -145,34 +145,60 @@ class FireSmokeDetector:
         return events
 
     def _detect_fire_heuristic(self, frame: np.ndarray, timestamp: float) -> List[FireSmokeEvent]:
-        """Detect flame characteristics via high-luminance glowing core & chromatic radiant gradient."""
+        """Detect flame characteristics with strict YCbCr skin-tone exclusion and emissive radiant core verification."""
         events: List[FireSmokeEvent] = []
         try:
             h, w = frame.shape[:2]
             total_frame_area = w * h
-            
+
             hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+            ycbcr = cv2.cvtColor(frame, cv2.COLOR_BGR2YCrCb)
             b, g, r = cv2.split(frame)
 
-            # 1. Flame Chromatic Signature:
-            # - Intense red dominance: R > G > B
-            # - High red channel intensity: R > 195
-            # - Low blue channel: B < 130
-            # - Distinct red-to-green margin: R - G > 20
-            rgb_flame = (r > g) & (g > b) & (r > 195) & (b < 130) & ((r.astype(np.int16) - g.astype(np.int16)) > 20)
+            y_chan = ycbcr[:, :, 0]
+            cr_chan = ycbcr[:, :, 1]
+            cb_chan = ycbcr[:, :, 2]
+            s_chan = hsv[:, :, 1]
+            v_chan = hsv[:, :, 2]
 
-            # 2. HSV flame hue (Red-Orange-Yellow spectrum)
-            lower_flame1 = np.array([0, 90, 160], dtype=np.uint8)
-            upper_flame1 = np.array([32, 255, 255], dtype=np.uint8)
-            lower_flame2 = np.array([170, 90, 160], dtype=np.uint8)
+            # 1. SCIENTIFIC HUMAN SKIN TONE EXCLUSION (Kovac / Chai Skin Chrominance Model)
+            # Skin tone cluster: Cb in [77, 127], Cr in [133, 175], moderate saturation (S < 150)
+            is_skin_tone = (
+                (cb_chan >= 77)
+                & (cb_chan <= 127)
+                & (cr_chan >= 133)
+                & (cr_chan <= 175)
+                & (s_chan < 150)
+                & (y_chan < 235)
+            )
+
+            # 2. FLAME CHROMATIC & RADIANT CONDITIONS (Celik & Demirel + Emissive Incandescence)
+            # - Emissive Red dominance: R > G > B with sharp red contrast (R - G > 35)
+            # - High red channel intensity: R >= 210
+            # - High color saturation: S >= 140 (skin is 25-90, flames are highly saturated)
+            # - High brightness: V >= 180
+            rgb_flame = (
+                (r > g)
+                & (g > b)
+                & (r >= 210)
+                & (b < 120)
+                & ((r.astype(np.int16) - g.astype(np.int16)) >= 35)
+                & (s_chan >= 140)
+                & (v_chan >= 180)
+            )
+
+            # 3. HSV Flame Spectrum (Red-Orange-Yellow)
+            lower_flame1 = np.array([0, 140, 180], dtype=np.uint8)
+            upper_flame1 = np.array([28, 255, 255], dtype=np.uint8)
+            lower_flame2 = np.array([170, 140, 180], dtype=np.uint8)
             upper_flame2 = np.array([180, 255, 255], dtype=np.uint8)
 
             mask_hsv1 = cv2.inRange(hsv, lower_flame1, upper_flame1)
             mask_hsv2 = cv2.inRange(hsv, lower_flame2, upper_flame2)
             mask_hsv = cv2.bitwise_or(mask_hsv1, mask_hsv2)
 
-            # Combined candidate flame pixels
-            candidate_mask = np.where(rgb_flame & (mask_hsv > 0), 255, 0).astype(np.uint8)
+            # Combined candidate flame pixels SUBTRACTING human skin tone
+            candidate_mask = np.where(rgb_flame & (mask_hsv > 0) & (~is_skin_tone), 255, 0).astype(np.uint8)
 
             # Morphological consolidation
             kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
@@ -183,29 +209,35 @@ class FireSmokeDetector:
 
             for cnt in contours:
                 area = cv2.contourArea(cnt)
-                # Ignore tiny noise and massive whole-room backgrounds (> 40% screen)
-                if self.min_fire_area <= area <= (total_frame_area * 0.40):
+                # Ignore tiny noise (< 200px) and massive scene backgrounds (> 35% screen)
+                if self.min_fire_area <= area <= (total_frame_area * 0.35):
                     bx, by, bw, bh = cv2.boundingRect(cnt)
-                    
-                    # Distinguish real emissive flame from flat matte clothing/signs:
-                    # 1. Emissive radiant core (peak brightness > 215)
-                    # 2. Flame gradient variance: standard deviation of color in ROI > 16
+
                     roi_r = r[by : by + bh, bx : bx + bw]
-                    roi_v = hsv[by : by + bh, bx : bx + bw, 2]
+                    roi_v = v_chan[by : by + bh, bx : bx + bw]
+                    roi_s = s_chan[by : by + bh, bx : bx + bw]
 
                     max_val = int(np.max(roi_v)) if roi_v.size > 0 else 0
                     max_r = int(np.max(roi_r)) if roi_r.size > 0 else 0
+                    mean_s = float(np.mean(roi_s)) if roi_s.size > 0 else 0.0
                     std_r = float(np.std(roi_r)) if roi_r.size > 0 else 0.0
 
-                    # Must have an emissive glowing core (peak value >= 210) AND high dynamic color variance
-                    if max_val >= 210 and max_r >= 215 and std_r >= 14.0:
-                        conf = min(0.95, 0.65 + (max_val / 255.0) * 0.28)
+                    # Proportion of incandescent glowing pixels in core
+                    hot_pixels_ratio = float(np.sum(roi_v >= 220)) / max(1.0, float(bw * bh))
+
+                    # STRICT EMISSIVE CRITERIA (Rejects skin tone, clothes, orange signs):
+                    # 1. Peak red >= 230 and peak brightness >= 225 (incandescent emissive core)
+                    # 2. Mean saturation >= 135 (skin is 30-90)
+                    # 3. Dynamic color gradient std >= 15
+                    # 4. At least 10% of ROI is intensely glowing (> 220)
+                    if max_val >= 225 and max_r >= 230 and mean_s >= 135.0 and std_r >= 15.0 and hot_pixels_ratio >= 0.10:
+                        conf = min(0.96, 0.70 + (max_val / 255.0) * 0.25)
                         events.append(
                             FireSmokeEvent(
                                 event_type="possible_fire",
                                 confidence=conf,
                                 bounding_box=(bx, by, bx + bw, by + bh),
-                                reason="radiant_flame_gradient_intensity",
+                                reason="radiant_flame_incandescent_core",
                                 backend="heuristic",
                                 timestamp=timestamp,
                                 risk="CRITICAL" if area > 1200 else "HIGH",

@@ -17,8 +17,9 @@ def test_fire_heuristic_detection():
     # Create dark frame with bright radiant orange/yellow flame patch
     frame = np.zeros((480, 640, 3), dtype=np.uint8)
     # Draw bright flame core (BGR: high red, medium green, low blue with high luminance)
-    cv2.circle(frame, (320, 240), 40, (10, 120, 245), -1)
-    cv2.circle(frame, (320, 240), 18, (30, 220, 255), -1)
+    cv2.circle(frame, (320, 240), 40, (0, 60, 255), -1)
+    cv2.circle(frame, (320, 240), 22, (10, 180, 255), -1)
+    cv2.circle(frame, (320, 240), 10, (50, 240, 255), -1)
 
     events = detector.detect(frame, timestamp=100.0)
     assert len(events) >= 1
