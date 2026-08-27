@@ -5,7 +5,8 @@ import { Camera } from '../types';
 import { CameraCard } from '../components/CameraCard';
 import { CameraStreamModal } from '../components/CameraStreamModal';
 import { LocationMapModal } from '../components/LocationMapModal';
-import { Video, Plus, RefreshCw, Filter } from 'lucide-react';
+import { MobileCameraModal } from '../components/MobileCameraModal';
+import { Video, Plus, RefreshCw, Filter, Smartphone } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
@@ -14,6 +15,7 @@ export const LiveCamerasPage: React.FC = () => {
   const [filterType, setFilterType] = useState<string>('ALL');
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [loading, setLoading] = useState(true);
+  const [isMobileScannerOpen, setIsMobileScannerOpen] = useState(false);
 
   const [selectedCamera, setSelectedCamera] = useState<Camera | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<{ camera?: Camera } | null>(null);
@@ -60,6 +62,14 @@ export const LiveCamerasPage: React.FC = () => {
         </div>
 
         <div className="flex items-center space-x-3 w-full sm:w-auto">
+          <button
+            onClick={() => setIsMobileScannerOpen(true)}
+            className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-all shadow-md shadow-emerald-950/40"
+          >
+            <Smartphone className="w-4 h-4" />
+            <span>📱 Use Device Camera</span>
+          </button>
+
           <button
             onClick={loadCameras}
             className="p-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-lg transition-colors"
@@ -157,6 +167,11 @@ export const LiveCamerasPage: React.FC = () => {
       <LocationMapModal
         camera={selectedLocation?.camera}
         onClose={() => setSelectedLocation(null)}
+      />
+
+      <MobileCameraModal
+        isOpen={isMobileScannerOpen}
+        onClose={() => setIsMobileScannerOpen(false)}
       />
     </div>
   );

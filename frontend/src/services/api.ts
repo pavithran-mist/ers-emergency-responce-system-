@@ -646,4 +646,21 @@ export const api = {
       ];
     }
   },
+
+  // Mobile Frame Direct Inference
+  async detectFrame(imageBase64: string): Promise<any> {
+    try {
+      const res = await safeFetch(`${API_BASE}/ai/detect-frame`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({ image_base64: imageBase64 }),
+      });
+      return await handleResponse<any>(res);
+    } catch {
+      return { status: 'error', detections: [], hazards: [] };
+    }
+  },
 };

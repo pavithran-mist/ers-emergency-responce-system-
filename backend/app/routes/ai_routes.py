@@ -125,3 +125,59 @@ def get_ai_statistics(
         "top_locations": location_data,
         "backend_distribution": backend_data,
     }
+
+
+import base64
+import cv2
+import numpy as np
+from pydantic import BaseModel
+from ai_engine.detector import ObjectDetector
+from ai_engine.accident_detector import AccidentDetector
+from ai_engine.fire_smoke_detector import FireSmokeDetector
+
+_shared_detector = ObjectDetector(confidence_threshold=0.20)
+_shared_accident = AccidentDetector()
+_shared_fire = FireSmokeDetector(enable_heuristic_fire=True, enable_heuristic_smoke=False)
+
+
+class FrameDetectRequest(BaseModel):
+    image_base64: str
+
+
+@router.post("/detect-frame")
+def detect_mobile_frame(
+    req: FrameDetectRequest,
+    user: User = Depends(require_approved_user),
+):
+    """Run live YOLO inference on frames streamed directly from phone browser camera."""
+    try:
+        data = req.image_base64
+        if "," in data:
+            data = data.split(",", 1)[1]
+        img_bytes = base64.b64decode(data)
+        nparr = np.frombuffer(img_bytes, np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+        if frame is None:
+            return {"status": "error", "detections": [], "hazards": []}
+
+        # 1. YOLO vehicle & object detector
+        detections = _shared_detector.detect(frame)
+
+        # 2. Fire and smoke detector
+        fire_events = _shared_fire.detect(frame)
+
+        # 3. Accident detector
+        accident_events = _shared_accident.detect(frame, [])
+
+        hazards = [e.to_dict() for e in fire_events] + [e.to_dict() for e in accident_events]
+
+        return {
+            "status": "success",
+            "detections": [d.to_dict() for d in detections],
+            "hazards": hazards,
+            "vehicle_count": len(detections),
+            "risk_level": "CRITICAL" if hazards else "LOW",
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e), "detections": [], "hazards": []}
