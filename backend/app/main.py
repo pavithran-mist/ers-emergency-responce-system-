@@ -131,7 +131,7 @@ async def lifespan(app: FastAPI):
     # Bind event loop and launch camera AI workers
     loop = asyncio.get_running_loop()
     camera_service.set_event_loop(loop)
-    camera_service.initialize_cameras()
+    #camera_service.initialize_cameras()
 
     logger.info("ASTRA AI Platform Backend started successfully.")
     yield
