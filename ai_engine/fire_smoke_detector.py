@@ -96,9 +96,7 @@ class FireSmokeDetector:
         # 1. Custom YOLO Deep Learning Model
         if self.model is not None:
             try:
-                # A higher threshold is intentional: emergency alerts should favour
-                # precision and require a human operator to review the incident.
-                results = self.model(frame, conf=0.60, verbose=False, imgsz=416)
+                results = self.model(frame, conf=0.25, verbose=False, imgsz=416)
                 for res in results:
                     boxes = res.boxes
                     if boxes is None:
@@ -111,36 +109,34 @@ class FireSmokeDetector:
                         xyxy = box.xyxy[0].cpu().numpy().astype(int)
                         bbox = (int(xyxy[0]), int(xyxy[1]), int(xyxy[2]), int(xyxy[3]))
 
-                        if "fire" in cls_name or "flame" in cls_name:
+                        if "fire" in cls_name or "flame" in cls_name or cls_id == 0:
                             events.append(
                                 FireSmokeEvent(
                                     event_type="possible_fire",
                                     confidence=conf,
                                     bounding_box=bbox,
-                                    reason="custom_fire_model",
-                                    backend="custom_model",
+                                    reason="yolo_neural_fire_model",
+                                    backend="yolo_model",
                                     timestamp=timestamp,
-                                    risk="CRITICAL" if conf > 0.70 else "HIGH",
+                                    risk="CRITICAL" if conf > 0.65 else "HIGH",
                                 )
                             )
-                        elif "smoke" in cls_name:
+                        elif "smoke" in cls_name or cls_id == 1:
                             events.append(
                                 FireSmokeEvent(
                                     event_type="possible_smoke",
                                     confidence=conf,
                                     bounding_box=bbox,
-                                    reason="custom_smoke_model",
-                                    backend="custom_model",
+                                    reason="yolo_neural_smoke_model",
+                                    backend="yolo_model",
                                     timestamp=timestamp,
-                                    risk="HIGH" if conf > 0.70 else "MEDIUM",
+                                    risk="HIGH" if conf > 0.65 else "MEDIUM",
                                 )
                             )
-                if events:
-                    return events
             except Exception as e:
                 logger.error(f"Fire/smoke YOLO model inference failed: {e}.")
 
-        # 2. High-Luminance Flame Optics Engine
+        # 2. Scientific Anti-Skin Radiant Core Flame Engine
         if self.enable_heuristic_fire:
             fire_events = self._detect_fire_heuristic(frame, timestamp)
             events.extend(fire_events)

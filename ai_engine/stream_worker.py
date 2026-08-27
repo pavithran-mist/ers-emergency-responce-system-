@@ -46,12 +46,12 @@ class CameraStreamWorker:
         self.synthetic_target_fps = max(1, int(os.getenv("ASTRA_SYNTHETIC_FPS", "30")))
         self.use_cuda = os.getenv("ASTRA_USE_CUDA", "false").strip().lower() in {"1", "true", "yes"}
 
-        # Initialize AI Pipeline Modules with Real Deep Learning YOLO models
+        # Initialize AI Pipeline Modules with Real Deep Learning YOLO models & Radiant Core Engine
         self.detector = ObjectDetector(confidence_threshold=0.25, use_cuda=self.use_cuda)
         self.tracker = VehicleTracker(max_age=15, iou_threshold=0.20)
         self.accident_detector = AccidentDetector(custom_model_path=custom_accident_model)
-        self.fire_smoke_detector = FireSmokeDetector(custom_model_path=custom_fire_model, enable_heuristic_fire=False, enable_heuristic_smoke=False)
-        self.temporal_verifier = TemporalVerifier(window_size=6, min_hits=3, cooldown_seconds=6.0)
+        self.fire_smoke_detector = FireSmokeDetector(custom_model_path=custom_fire_model, enable_heuristic_fire=True, enable_heuristic_smoke=False)
+        self.temporal_verifier = TemporalVerifier(window_size=5, min_hits=2, cooldown_seconds=5.0)
 
         # Worker state
         self.is_running = False
