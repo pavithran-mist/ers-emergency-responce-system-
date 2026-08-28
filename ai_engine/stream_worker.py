@@ -6,6 +6,7 @@ import time
 import random
 import logging
 import os
+import sys
 from typing import Callable, Optional, Dict, Any, List
 import numpy as np
 import cv2
@@ -108,14 +109,18 @@ class CameraStreamWorker:
 
     def _init_source(self) -> bool:
         """Open video stream source."""
-        if self.camera_type == "synthetic" or self.stream_url.lower() in ["synthetic", "demo", "sim", "mock"]:
+        str_url = str(self.stream_url).strip() if self.stream_url is not None else "0"
+        cam_type = str(self.camera_type).strip().lower() if self.camera_type else "synthetic"
+
+        if cam_type == "synthetic" or str_url.lower() in ["synthetic", "demo", "sim", "mock"]:
             self.synthetic_gen = SyntheticTrafficGenerator()
             self.is_connected = True
             return True
 
         # Check for headless Linux cloud environment without hardware cameras
-        if (self.stream_url.isdigit() or self.camera_type == "webcam") and sys.platform.startswith("linux"):
-            cam_idx = int(self.stream_url) if self.stream_url.isdigit() else 0
+        is_webcam = str_url.isdigit() or cam_type == "webcam"
+        if is_webcam and sys.platform.startswith("linux"):
+            cam_idx = int(str_url) if str_url.isdigit() else 0
             if not os.path.exists(f"/dev/video{cam_idx}"):
                 logger.info(
                     f"Headless cloud environment detected. Initialized visual traffic stream for camera {self.camera_id}."
@@ -126,9 +131,13 @@ class CameraStreamWorker:
 
         try:
             # Handle webcam integer index
-            if self.stream_url.isdigit() or self.camera_type == "webcam":
-                cam_idx = int(self.stream_url) if self.stream_url.isdigit() else 0
-                self.cap = cv2.VideoCapture(cam_idx, cv2.CAP_DSHOW)
+            if is_webcam:
+                cam_idx = int(str_url) if str_url.isdigit() else 0
+                if sys.platform == "win32":
+                    self.cap = cv2.VideoCapture(cam_idx, cv2.CAP_DSHOW)
+                else:
+                    self.cap = cv2.VideoCapture(cam_idx)
+
                 if not self.cap or not self.cap.isOpened():
                     self.cap = cv2.VideoCapture(cam_idx)
                 if self.cap and self.cap.isOpened():
@@ -137,7 +146,7 @@ class CameraStreamWorker:
                     self.cap.set(cv2.CAP_PROP_FPS, 30)
                     self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             else:
-                self.cap = cv2.VideoCapture(self.stream_url)
+                self.cap = cv2.VideoCapture(str_url)
                 if self.cap and self.cap.isOpened():
                     self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
@@ -147,9 +156,7 @@ class CameraStreamWorker:
                 logger.info(f"Successfully connected to real video source: {self.stream_url}")
                 return True
             else:
-                # If hardware webcam index 0 is not available (e.g. running on cloud / Render container without physical camera),
-                # activate fallback traffic feed so cloud deployments remain active.
-                if self.camera_type == "webcam" or self.stream_url == "0":
+                if cam_type == "webcam" or str_url == "0":
                     logger.info(f"Initialized visual traffic stream for camera {self.camera_id}.")
                     self.synthetic_gen = SyntheticTrafficGenerator()
                     self.is_connected = True
@@ -161,7 +168,7 @@ class CameraStreamWorker:
                     self.latest_telemetry["status"] = "OFFLINE"
                 return False
         except Exception as e:
-            if self.camera_type == "webcam" or self.stream_url == "0":
+            if cam_type == "webcam" or str_url == "0":
                 self.synthetic_gen = SyntheticTrafficGenerator()
                 self.is_connected = True
                 return True
